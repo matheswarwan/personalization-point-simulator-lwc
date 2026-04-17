@@ -6,12 +6,6 @@ public with sharing class PersonalizationSimulatorController {
         @AuraEnabled public String dataspace;
     }
 
-    // ─── Request DTO ──────────────────────────────────────────────
-    public class SimulateRequest {
-        @AuraEnabled public String personalizationPointName;
-        @AuraEnabled public String individualId;
-    }
-
     // ─── Response DTO ─────────────────────────────────────────────
     public class SimulateResult {
         @AuraEnabled public Boolean success;
@@ -39,9 +33,6 @@ public with sharing class PersonalizationSimulatorController {
     // ─── Get Personalization Point API Name ───────────────────────
     @AuraEnabled(cacheable=true)
     public static String getPersonalizationPointApiName(String recordId) {
-        // Query the Personalization Point object for the API name field
-        // Note: Adjust the object/field API names to match your org's
-        // Salesforce Personalization managed package schema
         List<sObject> records = Database.query(
             'SELECT Id, DeveloperName ' +
             'FROM PersonalizationPoint ' +
