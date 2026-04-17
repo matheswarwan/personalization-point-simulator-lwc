@@ -58,19 +58,19 @@ public with sharing class PersonalizationSimulatorController {
 
     // ─── Simulate ─────────────────────────────────────────────────
     @AuraEnabled
-    public static SimulateResult simulate(SimulateRequest req) {
+    public static SimulateResult simulate(String personalizationPointName, String individualId) {
         SimulatorConfig config = getConfig();
 
         String endpoint = config.tseBaseUrl + '/personalization/decisions';
 
         // Build request body
         Map<String, Object> context = new Map<String, Object>{
-            'individualId' => req.individualId,
+            'individualId' => individualId,
             'dataspace'    => config.dataspace
         };
 
         Map<String, Object> personalizationPoint = new Map<String, Object>{
-            'name' => req.personalizationPointName
+            'name' => personalizationPointName
         };
 
         Map<String, Object> body = new Map<String, Object>{

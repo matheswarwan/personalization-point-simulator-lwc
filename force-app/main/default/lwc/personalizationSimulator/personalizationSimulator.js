@@ -122,10 +122,8 @@ export default class PersonalizationSimulator extends LightningElement {
 
         try {
             const result = await simulate({
-                req: {
-                    personalizationPointName: this.ppApiName,
-                    individualId: this.individualId.trim()
-                }
+                personalizationPointName: this.ppApiName,
+                individualId: this.individualId.trim()
             });
 
             this.httpStatus = result.httpStatus;
