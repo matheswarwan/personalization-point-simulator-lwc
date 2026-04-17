@@ -6,7 +6,6 @@ import simulate from '@salesforce/apex/PersonalizationSimulatorController.simula
 // ── Utilities ────────────────────────────────────────────────────
 
 function generateDeviceId() {
-    // Generates a random 16-char hex string
     return [...Array(16)]
         .map(() => Math.floor(Math.random() * 16).toString(16))
         .join('');
@@ -23,8 +22,6 @@ function isUrl(value) {
 }
 
 function formatColumnLabel(apiName) {
-    // Convert API names to readable labels
-    // e.g. ssot__Name__c → Name, Price__c → Price, Image_URL__c → Image URL
     return apiName
         .replace(/^ssot__/, '')
         .replace(/__c$/, '')
@@ -38,28 +35,29 @@ export default class PersonalizationSimulator extends LightningElement {
     @api recordId;
 
     // State
-    @track individualId = generateDeviceId();
-    @track isLoading    = false;
-    @track error        = null;
+    @track individualId  = generateDeviceId();
+    @track isLoading     = false;
+    @track error         = null;
 
-    // Config (from CMT via Apex)
-    @track tseBaseUrl   = '';
-    @track dataspace    = '';
+    // Config — auto-detected via ConnectApi or loaded from CMT, user-editable in-place
+    @track tseBaseUrl    = '';
+    @track dataspace     = 'default';
+    @track autoDetected  = false;
 
     // Personalization Point API name (from SOQL)
-    @track ppApiName    = '';
+    @track ppApiName     = '';
 
     // Response
-    @track rawJson          = '';
-    @track tableColumns     = [];   // [{label, fieldName}]
-    @track tableRows        = [];   // [{id, cells: [{fieldName, label, value, isImage, isUrl, isText}]}]
-    @track attributeItems   = [];   // [{key, value}]
+    @track rawJson           = '';
+    @track tableColumns      = [];
+    @track tableRows         = [];
+    @track attributeItems    = [];
     @track personalizationId = '';
-    @track requestId        = '';
-    @track httpStatus       = null;
-    @track hasResponse      = false;
-    @track showJson         = false;
-    @track showTable        = true;
+    @track requestId         = '';
+    @track httpStatus        = null;
+    @track hasResponse       = false;
+    @track showJson          = false;
+    @track showTable         = true;
 
     // ── Lifecycle ────────────────────────────────────────────────
 
@@ -71,8 +69,9 @@ export default class PersonalizationSimulator extends LightningElement {
     async loadConfig() {
         try {
             const config = await getConfig();
-            this.tseBaseUrl = config.tseBaseUrl;
-            this.dataspace  = config.dataspace;
+            this.tseBaseUrl   = config.tseBaseUrl   || '';
+            this.dataspace    = config.dataspace     || 'default';
+            this.autoDetected = config.autoDetected  || false;
         } catch (e) {
             this.error = 'Failed to load config: ' + (e.body?.message || e.message);
         }
@@ -87,6 +86,10 @@ export default class PersonalizationSimulator extends LightningElement {
     }
 
     // ── Handlers ─────────────────────────────────────────────────
+
+    handleTseUrlChange(event) {
+        this.tseBaseUrl = event.target.value;
+    }
 
     handleIndividualIdChange(event) {
         this.individualId = event.target.value;
@@ -107,8 +110,8 @@ export default class PersonalizationSimulator extends LightningElement {
             this.error = 'Personalization Point API name not loaded yet.';
             return;
         }
-        if (!this.tseBaseUrl) {
-            this.error = 'TSE Base URL not configured. Update the Personalization_Config__mdt record.';
+        if (!this.tseBaseUrl?.trim()) {
+            this.error = 'TSE Base URL is required. It will auto-populate if Data Cloud ConnectApi is available, otherwise update the Personalization_Config__mdt record.';
             return;
         }
         if (!this.individualId?.trim()) {
@@ -123,7 +126,9 @@ export default class PersonalizationSimulator extends LightningElement {
         try {
             const result = await simulate({
                 personalizationPointName: this.ppApiName,
-                individualId: this.individualId.trim()
+                individualId:            this.individualId.trim(),
+                tseBaseUrl:              this.tseBaseUrl.trim(),
+                dataspace:               this.dataspace || 'default'
             });
 
             this.httpStatus = result.httpStatus;
@@ -159,24 +164,18 @@ export default class PersonalizationSimulator extends LightningElement {
 
         const personalizations = parsed.personalizations || [];
         if (personalizations.length === 0) {
-            this.tableColumns    = [];
-            this.tableRows       = [];
-            this.attributeItems  = [];
+            this.tableColumns      = [];
+            this.tableRows         = [];
+            this.attributeItems    = [];
             this.personalizationId = '';
             return;
         }
 
-        // Use first personalization block
         const p = personalizations[0];
         this.personalizationId = p.personalizationId || '';
 
-        // ── Attributes ───────────────────────────────────────────
-        this.attributeItems = Object.entries(p.attributes || {}).map(([key, value]) => ({
-            key,
-            value
-        }));
+        this.attributeItems = Object.entries(p.attributes || {}).map(([key, value]) => ({ key, value }));
 
-        // ── Table data ───────────────────────────────────────────
         const EXCLUDED_FIELDS = ['personalizationContentId'];
         const data = p.data || [];
 
@@ -189,24 +188,14 @@ export default class PersonalizationSimulator extends LightningElement {
         const sampleRow  = data[0];
         const fieldNames = Object.keys(sampleRow).filter(f => !EXCLUDED_FIELDS.includes(f));
 
-        // Detect column types from the first row's values
         const columnMeta = fieldNames.map(fieldName => {
             const sampleValue = sampleRow[fieldName];
             const isImg  = isImageUrl(sampleValue);
             const isLink = !isImg && isUrl(sampleValue);
-            return {
-                fieldName,
-                label:   formatColumnLabel(fieldName),
-                isImage: isImg,
-                isUrl:   isLink,
-                isText:  !isImg && !isLink
-            };
+            return { fieldName, label: formatColumnLabel(fieldName), isImage: isImg, isUrl: isLink, isText: !isImg && !isLink };
         });
 
         this.tableColumns = columnMeta;
-
-        // Build rows with pre-resolved cell data so the template can iterate
-        // without bracket-notation (not supported in LWC templates)
         this.tableRows = data.map((item, index) => ({
             id: item.personalizationContentId || String(index),
             cells: columnMeta.map(col => ({
@@ -221,11 +210,8 @@ export default class PersonalizationSimulator extends LightningElement {
     }
 
     formatJson(jsonString) {
-        try {
-            return JSON.stringify(JSON.parse(jsonString), null, 2);
-        } catch {
-            return jsonString;
-        }
+        try { return JSON.stringify(JSON.parse(jsonString), null, 2); }
+        catch { return jsonString; }
     }
 
     // ── Computed ─────────────────────────────────────────────────
@@ -234,11 +220,13 @@ export default class PersonalizationSimulator extends LightningElement {
         return this.isLoading ? 'Simulating...' : 'Simulate';
     }
 
+    get tseFieldLabel() {
+        return this.autoDetected ? 'TSE Base URL (auto-detected)' : 'TSE Base URL';
+    }
+
     get statusBadgeClass() {
         if (!this.httpStatus) return '';
-        return this.httpStatus === 200
-            ? 'slds-badge slds-theme_success'
-            : 'slds-badge slds-theme_error';
+        return this.httpStatus === 200 ? 'slds-badge slds-theme_success' : 'slds-badge slds-theme_error';
     }
 
     get tableButtonClass() {

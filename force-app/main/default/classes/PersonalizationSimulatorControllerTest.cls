@@ -48,12 +48,14 @@ private class PersonalizationSimulatorControllerTest {
         Test.startTest();
         try {
             PersonalizationSimulatorController.SimulateResult result =
-                PersonalizationSimulatorController.simulate('PDP_Recs', 'd0cf39a5824a008d');
+                PersonalizationSimulatorController.simulate(
+                    'PDP_Recs', 'd0cf39a5824a008d',
+                    'https://m-test.c360a.salesforce.com', 'default'
+                );
             System.assertEquals(200, result.httpStatus);
             System.assertEquals(true, result.success);
             System.assertEquals(MOCK_RESPONSE, result.responseJson);
         } catch (Exception e) {
-            // ConnectApi.DataCloud.getSettings() not available in test context without Data Cloud
             System.assert(e.getMessage() != null, 'Unexpected error: ' + e.getMessage());
         }
         Test.stopTest();
@@ -67,7 +69,10 @@ private class PersonalizationSimulatorControllerTest {
         Test.startTest();
         try {
             PersonalizationSimulatorController.SimulateResult result =
-                PersonalizationSimulatorController.simulate('PDP_Recs', 'test-id');
+                PersonalizationSimulatorController.simulate(
+                    'PDP_Recs', 'test-id',
+                    'https://m-test.c360a.salesforce.com', 'default'
+                );
             System.assertEquals(500, result.httpStatus);
             System.assertEquals(false, result.success);
             System.assert(result.errorMessage.contains('500'), 'Expected HTTP 500 error message');

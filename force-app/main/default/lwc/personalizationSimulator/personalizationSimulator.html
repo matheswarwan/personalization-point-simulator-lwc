@@ -5,12 +5,13 @@
         <div class="slds-m-around_medium">
             <div class="slds-grid slds-gutters slds-wrap">
 
-                <!-- TSE URL (read-only display) -->
+                <!-- TSE URL — editable; auto-populated from ConnectApi or CMT -->
                 <div class="slds-col slds-size_1-of-1 slds-medium-size_2-of-3">
                     <lightning-input
-                        label="TSE Base URL"
+                        label={tseFieldLabel}
                         value={tseBaseUrl}
-                        disabled
+                        onchange={handleTseUrlChange}
+                        placeholder="https://m-xxxx.c360a.salesforce.com"
                         variant="label-stacked">
                     </lightning-input>
                 </div>

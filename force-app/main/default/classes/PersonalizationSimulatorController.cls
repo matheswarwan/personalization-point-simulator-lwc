@@ -4,29 +4,40 @@ public with sharing class PersonalizationSimulatorController {
     public class SimulatorConfig {
         @AuraEnabled public String tseBaseUrl;
         @AuraEnabled public String dataspace;
+        @AuraEnabled public Boolean autoDetected; // true = came from ConnectApi
     }
 
     // ─── Response DTO ─────────────────────────────────────────────
     public class SimulateResult {
         @AuraEnabled public Boolean success;
-        @AuraEnabled public String responseJson;   // full raw JSON string
+        @AuraEnabled public String responseJson;
         @AuraEnabled public String errorMessage;
         @AuraEnabled public Integer httpStatus;
     }
 
     // ─── Get Config ───────────────────────────────────────────────
+    // Reads TSE URL and dataspace from Personalization_Config__mdt.
+    // ConnectApi.DataCloud is not available in this org edition.
     @AuraEnabled(cacheable=true)
     public static SimulatorConfig getConfig() {
-        Personalization_Config__mdt config = [
-            SELECT TSE_Base_URL__c, Dataspace__c
-            FROM Personalization_Config__mdt
-            WHERE Is_Active__c = true
-            LIMIT 1
-        ];
-
         SimulatorConfig result = new SimulatorConfig();
-        result.tseBaseUrl = config.TSE_Base_URL__c;
-        result.dataspace  = config.Dataspace__c;
+
+        try {
+            Personalization_Config__mdt config = [
+                SELECT TSE_Base_URL__c, Dataspace__c
+                FROM Personalization_Config__mdt
+                WHERE Is_Active__c = true
+                LIMIT 1
+            ];
+            result.tseBaseUrl   = config.TSE_Base_URL__c;
+            result.dataspace    = config.Dataspace__c;
+            result.autoDetected = false;
+        } catch (Exception e) {
+            result.tseBaseUrl   = '';
+            result.dataspace    = 'default';
+            result.autoDetected = false;
+        }
+
         return result;
     }
 
@@ -48,16 +59,19 @@ public with sharing class PersonalizationSimulatorController {
     }
 
     // ─── Simulate ─────────────────────────────────────────────────
+    // tseBaseUrl is passed explicitly so the user's in-place edit is always used
     @AuraEnabled
-    public static SimulateResult simulate(String personalizationPointName, String individualId) {
-        SimulatorConfig config = getConfig();
+    public static SimulateResult simulate(
+        String personalizationPointName,
+        String individualId,
+        String tseBaseUrl,
+        String dataspace
+    ) {
+        String endpoint = tseBaseUrl.removeEnd('/') + '/personalization/decisions';
 
-        String endpoint = config.tseBaseUrl + '/personalization/decisions';
-
-        // Build request body
         Map<String, Object> context = new Map<String, Object>{
             'individualId' => individualId,
-            'dataspace'    => config.dataspace
+            'dataspace'    => String.isNotBlank(dataspace) ? dataspace : 'default'
         };
 
         Map<String, Object> personalizationPoint = new Map<String, Object>{
@@ -69,26 +83,20 @@ public with sharing class PersonalizationSimulatorController {
             'personalizationPoints' => new List<Object>{ personalizationPoint }
         };
 
-        String requestBody = JSON.serialize(body);
-
-        // Make callout
         HttpRequest httpReq = new HttpRequest();
         httpReq.setEndpoint(endpoint);
         httpReq.setMethod('POST');
         httpReq.setHeader('Content-Type', 'application/json');
-        httpReq.setBody(requestBody);
-        httpReq.setTimeout(30000); // 30 seconds
+        httpReq.setBody(JSON.serialize(body));
+        httpReq.setTimeout(30000);
 
         SimulateResult result = new SimulateResult();
 
         try {
-            Http http = new Http();
-            HttpResponse httpRes = http.send(httpReq);
-
+            HttpResponse httpRes = new Http().send(httpReq);
             result.httpStatus   = httpRes.getStatusCode();
             result.responseJson = httpRes.getBody();
             result.success      = (httpRes.getStatusCode() == 200);
-
             if (!result.success) {
                 result.errorMessage = 'HTTP ' + httpRes.getStatusCode() + ': ' + httpRes.getStatus();
             }
