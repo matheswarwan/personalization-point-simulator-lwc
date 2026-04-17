@@ -7,9 +7,7 @@ import simulate from '@salesforce/apex/PersonalizationSimulatorController.simula
 // ── Utilities ────────────────────────────────────────────────────
 
 function generateDeviceId() {
-    return [...Array(16)]
-        .map(() => Math.floor(Math.random() * 16).toString(16))
-        .join('');
+    return [...Array(16)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
 }
 
 function isImageUrl(value) {
@@ -24,10 +22,39 @@ function isUrl(value) {
 
 function formatColumnLabel(apiName) {
     return apiName
-        .replace(/^ssot__/, '')
-        .replace(/__c$/, '')
-        .replace(/_/g, ' ')
-        .replace(/\b\w/g, c => c.toUpperCase());
+        .replace(/^ssot__/, '').replace(/__c$/, '')
+        .replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function sourceMeta(source) {
+    if (source === 'recent') return { sourceLabel: 'Real Visitor', sourceBadgeClass: 'source-badge source-badge_recent' };
+    if (source === 'manual') return { sourceLabel: 'Custom',       sourceBadgeClass: 'source-badge source-badge_manual' };
+    return                          { sourceLabel: 'Random',       sourceBadgeClass: 'source-badge source-badge_random' };
+}
+
+let _keyCounter = 0;
+function makeEntry(individualId, source, index) {
+    const src = source || 'random';
+    return {
+        key:             String(++_keyCounter),
+        individualId:    individualId || generateDeviceId(),
+        source:          src,
+        tabLabel:        `Visitor ${index + 1}`,
+        ...sourceMeta(src),
+        isLoading:       false,
+        hasResult:       false,
+        error:           null,
+        rawJson:         '',
+        tableColumns:    [],
+        tableRows:       [],
+        attributeItems:  [],
+        personalizationId: '',
+        requestId:       '',
+        httpStatus:      null,
+        statusBadgeClass: '',
+        showTable:       true,
+        showJson:        false
+    };
 }
 
 // ── Component ────────────────────────────────────────────────────
@@ -35,37 +62,18 @@ function formatColumnLabel(apiName) {
 export default class PersonalizationSimulator extends LightningElement {
     @api recordId;
 
-    // State
-    @track individualId  = generateDeviceId();
-    @track isLoading     = false;
-    @track error         = null;
-
-    // Config — auto-detected via ConnectApi or loaded from CMT, user-editable in-place
-    @track tseBaseUrl    = '';
-    @track dataspace     = 'default';
-    @track autoDetected  = false;
-
-    // Personalization Point API name (from SOQL)
-    @track ppApiName     = '';
-
-    // Recent device IDs from Website Engagement DMO
-    @track recentIdOptions = [];   // [{label, value}] for combobox
-
-    // Response
-    @track rawJson           = '';
-    @track tableColumns      = [];
-    @track tableRows         = [];
-    @track attributeItems    = [];
-    @track personalizationId = '';
-    @track requestId         = '';
-    @track httpStatus        = null;
-    @track hasResponse       = false;
-    @track showJson          = false;
-    @track showTable         = true;
+    @track entries      = [];
+    @track tseBaseUrl   = '';
+    @track dataspace    = 'default';
+    @track autoDetected = false;
+    @track ppApiName    = '';
+    @track recentIds    = [];
+    @track globalError  = null;
 
     // ── Lifecycle ────────────────────────────────────────────────
 
     connectedCallback() {
+        this.entries = [makeEntry(null, 'random', 0)];
         this.loadConfig();
         this.loadApiName();
         this.loadRecentDeviceIds();
@@ -78,7 +86,7 @@ export default class PersonalizationSimulator extends LightningElement {
             this.dataspace    = config.dataspace     || 'default';
             this.autoDetected = config.autoDetected  || false;
         } catch (e) {
-            this.error = 'Failed to load config: ' + (e.body?.message || e.message);
+            this.globalError = 'Failed to load config: ' + (e.body?.message || e.message);
         }
     }
 
@@ -86,7 +94,7 @@ export default class PersonalizationSimulator extends LightningElement {
         try {
             this.ppApiName = await getPersonalizationPointApiName({ recordId: this.recordId });
         } catch (e) {
-            this.error = 'Failed to load Personalization Point API name: ' + (e.body?.message || e.message);
+            this.globalError = 'Failed to load Personalization Point API name: ' + (e.body?.message || e.message);
         }
     }
 
@@ -94,19 +102,58 @@ export default class PersonalizationSimulator extends LightningElement {
         try {
             const ids = await getRecentDeviceIds();
             if (ids && ids.length > 0) {
-                this.recentIdOptions = [
-                    { label: '— pick a recent visitor —', value: '' },
-                    ...ids.map((id, i) => ({
-                        label: i === 0 ? `${id}  (most recent)` : id,
-                        value: id
-                    }))
-                ];
-                // Auto-populate with most recent ID
-                this.individualId = ids[0];
+                this.recentIds = ids;
+                // Auto-populate first entry with the most recent real visitor
+                this.updateEntry(this.entries[0].key, {
+                    individualId: ids[0],
+                    source: 'recent',
+                    ...sourceMeta('recent')
+                });
             }
         } catch (e) {
-            // Non-fatal — fall back to random ID already set
+            // Non-fatal — keep the random ID already set
         }
+    }
+
+    // ── Entry management ─────────────────────────────────────────
+
+    updateEntry(key, updates) {
+        this.entries = this.entries.map(e => e.key === key ? { ...e, ...updates } : e);
+    }
+
+    rebuildTabLabels() {
+        this.entries = this.entries.map((e, i) => ({ ...e, tabLabel: `Visitor ${i + 1}` }));
+    }
+
+    handleEntryIdChange(event) {
+        const key   = event.target.dataset.key;
+        const value = event.target.value;
+        this.updateEntry(key, { individualId: value, source: 'manual', ...sourceMeta('manual') });
+    }
+
+    handleAddRandom() {
+        if (this.entries.length >= 10) return;
+        this.entries = [...this.entries, makeEntry(null, 'random', this.entries.length)];
+        this.rebuildTabLabels();
+    }
+
+    handleAddRecent(event) {
+        const id = event.detail.value;
+        if (!id) return;
+        if (this.entries.length >= 10) {
+            event.target.value = '';
+            return;
+        }
+        this.entries = [...this.entries, makeEntry(id, 'recent', this.entries.length)];
+        this.rebuildTabLabels();
+        event.target.value = '';
+    }
+
+    handleRemoveEntry(event) {
+        if (this.entries.length <= 1) return;
+        const key = event.target.dataset.key;
+        this.entries = this.entries.filter(e => e.key !== key);
+        this.rebuildTabLabels();
     }
 
     // ── Handlers ─────────────────────────────────────────────────
@@ -115,127 +162,117 @@ export default class PersonalizationSimulator extends LightningElement {
         this.tseBaseUrl = event.target.value;
     }
 
-    handleIndividualIdChange(event) {
-        this.individualId = event.target.value;
-    }
-
-    handleRandomize() {
-        this.individualId = generateDeviceId();
-    }
-
-    handleRecentIdSelect(event) {
-        const selected = event.detail.value;
-        if (selected) this.individualId = selected;
-    }
-
-    handleToggleView(event) {
+    handleTabToggle(event) {
+        const key  = event.target.dataset.key;
         const view = event.target.dataset.view;
-        this.showTable = (view === 'table');
-        this.showJson  = (view === 'json');
+        this.updateEntry(key, { showTable: view === 'table', showJson: view === 'json' });
     }
 
     async handleSimulate() {
+        this.globalError = null;
+
         if (!this.ppApiName) {
-            this.error = 'Personalization Point API name not loaded yet.';
+            this.globalError = 'Personalization Point API name not loaded yet.';
             return;
         }
         if (!this.tseBaseUrl?.trim()) {
-            this.error = 'TSE Base URL is required. It will auto-populate if Data Cloud ConnectApi is available, otherwise update the Personalization_Config__mdt record.';
-            return;
-        }
-        if (!this.individualId?.trim()) {
-            this.error = 'Individual / Device ID is required.';
+            this.globalError = 'TSE Base URL is required.';
             return;
         }
 
-        this.isLoading   = true;
-        this.error       = null;
-        this.hasResponse = false;
+        const blankEntry = this.entries.find(e => !e.individualId?.trim());
+        if (blankEntry) {
+            this.globalError = 'One or more Individual / Device IDs are blank.';
+            return;
+        }
+
+        // Mark all as loading
+        this.entries = this.entries.map(e => ({
+            ...e, isLoading: true, error: null, hasResult: false
+        }));
+
+        await Promise.all(this.entries.map(e => this.simulateEntry(e.key)));
+    }
+
+    async simulateEntry(key) {
+        const entry = this.entries.find(e => e.key === key);
+        if (!entry) return;
 
         try {
             const result = await simulate({
                 personalizationPointName: this.ppApiName,
-                individualId:            this.individualId.trim(),
+                individualId:            entry.individualId.trim(),
                 tseBaseUrl:              this.tseBaseUrl.trim(),
                 dataspace:               this.dataspace || 'default'
             });
 
-            this.httpStatus = result.httpStatus;
+            const parsed = result.success ? this.parseResponseData(result.responseJson) : {};
 
-            if (result.success) {
-                this.rawJson = this.formatJson(result.responseJson);
-                this.parseResponse(result.responseJson);
-                this.hasResponse = true;
-                this.showTable   = true;
-                this.showJson    = false;
-            } else {
-                this.error = result.errorMessage || 'Unknown error from Decisioning API';
-            }
+            this.updateEntry(key, {
+                isLoading:        false,
+                hasResult:        result.success,
+                httpStatus:       result.httpStatus,
+                statusBadgeClass: result.httpStatus === 200
+                    ? 'slds-badge slds-theme_success'
+                    : 'slds-badge slds-theme_error',
+                error:     result.success ? null : (result.errorMessage || 'Unknown error'),
+                showTable: true,
+                showJson:  false,
+                ...parsed
+            });
         } catch (e) {
-            this.error = e.body?.message || e.message;
-        } finally {
-            this.isLoading = false;
+            this.updateEntry(key, {
+                isLoading: false,
+                hasResult: false,
+                error:     e.body?.message || e.message
+            });
         }
     }
 
     // ── Response Parsing ─────────────────────────────────────────
 
-    parseResponse(jsonString) {
+    parseResponseData(jsonString) {
         let parsed;
-        try {
-            parsed = JSON.parse(jsonString);
-        } catch {
-            this.error = 'Could not parse API response as JSON';
-            return;
-        }
+        try { parsed = JSON.parse(jsonString); }
+        catch { return { rawJson: jsonString, tableColumns: [], tableRows: [], attributeItems: [], requestId: '', personalizationId: '' }; }
 
-        this.requestId = parsed.requestId || '';
-
+        const rawJson  = this.formatJson(jsonString);
+        const requestId = parsed.requestId || '';
         const personalizations = parsed.personalizations || [];
+
         if (personalizations.length === 0) {
-            this.tableColumns      = [];
-            this.tableRows         = [];
-            this.attributeItems    = [];
-            this.personalizationId = '';
-            return;
+            return { rawJson, requestId, tableColumns: [], tableRows: [], attributeItems: [], personalizationId: '' };
         }
 
         const p = personalizations[0];
-        this.personalizationId = p.personalizationId || '';
-
-        this.attributeItems = Object.entries(p.attributes || {}).map(([key, value]) => ({ key, value }));
-
-        const EXCLUDED_FIELDS = ['personalizationContentId'];
+        const personalizationId = p.personalizationId || '';
+        const attributeItems    = Object.entries(p.attributes || {}).map(([key, value]) => ({ key, value }));
         const data = p.data || [];
 
         if (data.length === 0) {
-            this.tableColumns = [];
-            this.tableRows    = [];
-            return;
+            return { rawJson, requestId, personalizationId, attributeItems, tableColumns: [], tableRows: [] };
         }
 
         const sampleRow  = data[0];
-        const fieldNames = Object.keys(sampleRow).filter(f => !EXCLUDED_FIELDS.includes(f));
+        const fieldNames = Object.keys(sampleRow).filter(f => f !== 'personalizationContentId');
 
         const columnMeta = fieldNames.map(fieldName => {
-            const sampleValue = sampleRow[fieldName];
-            const isImg  = isImageUrl(sampleValue);
-            const isLink = !isImg && isUrl(sampleValue);
+            const v = sampleRow[fieldName];
+            const isImg  = isImageUrl(v);
+            const isLink = !isImg && isUrl(v);
             return { fieldName, label: formatColumnLabel(fieldName), isImage: isImg, isUrl: isLink, isText: !isImg && !isLink };
         });
 
-        this.tableColumns = columnMeta;
-        this.tableRows = data.map((item, index) => ({
-            id: item.personalizationContentId || String(index),
+        const tableRows = data.map((item, i) => ({
+            id: item.personalizationContentId || String(i),
             cells: columnMeta.map(col => ({
-                fieldName: col.fieldName,
-                label:     col.label,
+                fieldName: col.fieldName, label: col.label,
                 value:     item[col.fieldName] ?? '',
-                isImage:   col.isImage,
-                isUrl:     col.isUrl,
-                isText:    col.isText
+                isImage:   col.isImage, isUrl: col.isUrl, isText: col.isText
             }))
         }));
+
+        return { rawJson, requestId, personalizationId, attributeItems, tableColumns: columnMeta, tableRows };
     }
 
     formatJson(jsonString) {
@@ -245,36 +282,31 @@ export default class PersonalizationSimulator extends LightningElement {
 
     // ── Computed ─────────────────────────────────────────────────
 
+    get canAddMore()   { return this.entries.length < 10; }
+    get canRemove()    { return this.entries.length > 1; }
+    get entryCount()   { return `${this.entries.length} / 10 visitors`; }
+    get isSimulating() { return this.entries.some(e => e.isLoading); }
+    get hasResults()   { return this.entries.some(e => e.isLoading || e.hasResult || e.error); }
+
     get simulateButtonLabel() {
-        return this.isLoading ? 'Simulating...' : 'Simulate';
+        if (this.isSimulating) return 'Simulating...';
+        return this.entries.length > 1 ? 'Simulate All' : 'Simulate';
     }
 
     get tseFieldLabel() {
         return this.autoDetected ? 'TSE Base URL (auto-detected)' : 'TSE Base URL';
     }
 
-    get statusBadgeClass() {
-        if (!this.httpStatus) return '';
-        return this.httpStatus === 200 ? 'slds-badge slds-theme_success' : 'slds-badge slds-theme_error';
+    get recentIdOptions() {
+        if (!this.recentIds.length) return [];
+        return [
+            { label: '— add a recent visitor —', value: '' },
+            ...this.recentIds.map((id, i) => ({
+                label: i === 0 ? `${id}  (most recent)` : id,
+                value: id
+            }))
+        ];
     }
 
-    get tableButtonClass() {
-        return 'slds-button slds-button_neutral' + (this.showTable ? ' slds-is-selected' : '');
-    }
-
-    get jsonButtonClass() {
-        return 'slds-button slds-button_neutral' + (this.showJson ? ' slds-is-selected' : '');
-    }
-
-    get hasRecentIds() {
-        return this.recentIdOptions.length > 1;
-    }
-
-    get hasAttributes() {
-        return this.attributeItems.length > 0;
-    }
-
-    get hasTableData() {
-        return this.tableRows.length > 0;
-    }
+    get hasRecentIds() { return this.recentIds.length > 0; }
 }

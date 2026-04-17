@@ -1,7 +1,41 @@
-.recent-id-picker {
-    max-width: 480px;
+/* ── Entry rows ─────────────────────────────────────────────── */
+.entry-row {
+    align-items: center;
 }
 
+/* ── Source badges ───────────────────────────────────────────── */
+.source-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    min-width: 80px;
+    text-align: center;
+}
+
+.source-badge_recent {
+    background-color: #0070d2;
+    color: #fff;
+}
+
+.source-badge_random {
+    background-color: #dddbda;
+    color: #444;
+}
+
+.source-badge_manual {
+    background-color: #f4bc25;
+    color: #333;
+}
+
+/* ── Recent picker inline combobox ───────────────────────────── */
+.recent-picker-inline {
+    min-width: 220px;
+}
+
+/* ── Result table ────────────────────────────────────────────── */
 .product-thumbnail {
     width: 60px;
     height: 60px;
@@ -15,6 +49,7 @@
     border-radius: 4px;
 }
 
+/* ── JSON view ───────────────────────────────────────────────── */
 .json-wrapper {
     background: #1e1e1e;
     border-radius: 6px;
@@ -32,6 +67,7 @@
     word-break: break-word;
 }
 
+/* ── Attributes block ────────────────────────────────────────── */
 .attribute-block {
     background: #f3f3f3;
     border-left: 4px solid #0070d2;
@@ -49,6 +85,7 @@
     color: #0070d2;
 }
 
+/* ── Status badges ───────────────────────────────────────────── */
 .slds-badge.slds-theme_success {
     background-color: #4bca81;
     color: #fff;
