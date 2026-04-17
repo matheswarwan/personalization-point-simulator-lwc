@@ -1,0 +1,221 @@
+<template>
+    <lightning-card title="Personalization Simulator" icon-name="utility:connected_apps">
+
+        <!-- ── Config Summary ──────────────────────────────── -->
+        <div class="slds-m-around_medium">
+            <div class="slds-grid slds-gutters slds-wrap">
+
+                <!-- TSE URL (read-only display) -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_2-of-3">
+                    <lightning-input
+                        label="TSE Base URL"
+                        value={tseBaseUrl}
+                        disabled
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <!-- Personalization Point API Name (auto-loaded) -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                    <lightning-input
+                        label="Personalization Point"
+                        value={ppApiName}
+                        disabled
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <!-- Individual / Device ID -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_2-of-3">
+                    <lightning-input
+                        label="Individual / Device ID"
+                        value={individualId}
+                        onchange={handleIndividualIdChange}
+                        placeholder="e.g. d0cf39a5824a008d"
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <!-- Randomize + Simulate buttons -->
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3 slds-align-bottom">
+                    <div class="slds-grid slds-gutters slds-m-top_small">
+                        <div class="slds-col">
+                            <lightning-button
+                                label="Randomize"
+                                icon-name="utility:refresh"
+                                onclick={handleRandomize}
+                                variant="neutral">
+                            </lightning-button>
+                        </div>
+                        <div class="slds-col">
+                            <lightning-button
+                                label={simulateButtonLabel}
+                                icon-name="utility:play"
+                                onclick={handleSimulate}
+                                variant="brand"
+                                disabled={isLoading}>
+                            </lightning-button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Error ──────────────────────────────────── -->
+            <template if:true={error}>
+                <div class="slds-m-top_small">
+                    <div class="slds-notify slds-notify_alert slds-theme_error" role="alert">
+                        <span class="slds-assistive-text">Error</span>
+                        <lightning-icon
+                            icon-name="utility:error"
+                            size="x-small"
+                            alternative-text="Error"
+                            class="slds-m-right_x-small">
+                        </lightning-icon>
+                        {error}
+                    </div>
+                </div>
+            </template>
+
+            <!-- ── Loading ────────────────────────────────── -->
+            <template if:true={isLoading}>
+                <div class="slds-m-top_medium slds-align_absolute-center">
+                    <lightning-spinner
+                        alternative-text="Calling Decisioning API..."
+                        size="medium">
+                    </lightning-spinner>
+                    <p class="slds-m-top_small slds-text-color_weak">Calling Decisioning API...</p>
+                </div>
+            </template>
+        </div>
+
+        <!-- ── Response ───────────────────────────────────────── -->
+        <template if:true={hasResponse}>
+            <div class="slds-m-around_medium">
+
+                <!-- Status bar -->
+                <div class="slds-grid slds-gutters slds-m-bottom_small slds-align_absolute-center">
+                    <div class="slds-col slds-no-flex">
+                        <span class={statusBadgeClass}>HTTP {httpStatus}</span>
+                    </div>
+                    <div class="slds-col slds-no-flex slds-m-left_small">
+                        <span class="slds-text-color_weak slds-text-body_small">
+                            Request ID: {requestId}
+                        </span>
+                    </div>
+                    <div class="slds-col slds-no-flex slds-m-left_small">
+                        <span class="slds-text-color_weak slds-text-body_small">
+                            Personalization ID: {personalizationId}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- ── Attributes block ──────────────────── -->
+                <template if:true={hasAttributes}>
+                    <div class="slds-box slds-m-bottom_medium attribute-block">
+                        <p class="slds-text-title_caps slds-m-bottom_x-small">Attributes</p>
+                        <template for:each={attributeItems} for:item="attr">
+                            <div key={attr.key} class="slds-grid slds-gutters_x-small">
+                                <span class="slds-col slds-no-flex slds-text-body_small
+                                             slds-text-color_weak attr-key">
+                                    {attr.key}
+                                </span>
+                                <span class="slds-col slds-text-body_small attr-value">
+                                    {attr.value}
+                                </span>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- ── View toggle ───────────────────────── -->
+                <div class="slds-button-group slds-m-bottom_small" role="group">
+                    <button
+                        class={tableButtonClass}
+                        data-view="table"
+                        onclick={handleToggleView}>
+                        Table View
+                    </button>
+                    <button
+                        class={jsonButtonClass}
+                        data-view="json"
+                        onclick={handleToggleView}>
+                        JSON View
+                    </button>
+                </div>
+
+                <!-- ── Table View ────────────────────────── -->
+                <template if:true={showTable}>
+                    <template if:true={hasTableData}>
+                        <div class="result-table-wrapper">
+                            <table class="slds-table slds-table_cell-buffer slds-table_bordered
+                                          slds-table_striped">
+                                <thead>
+                                    <tr class="slds-line-height_reset">
+                                        <template for:each={tableColumns} for:item="col">
+                                            <th key={col.fieldName} scope="col">
+                                                <div class="slds-truncate" title={col.label}>
+                                                    {col.label}
+                                                </div>
+                                            </th>
+                                        </template>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template for:each={tableRows} for:item="row">
+                                        <tr key={row.id}>
+                                            <template for:each={row.cells} for:item="cell">
+                                                <td key={cell.fieldName} data-label={cell.label}>
+                                                    <!-- Image cell -->
+                                                    <template if:true={cell.isImage}>
+                                                        <img
+                                                            src={cell.value}
+                                                            alt={cell.label}
+                                                            class="product-thumbnail"
+                                                            onerror="this.src=''"
+                                                        />
+                                                    </template>
+                                                    <!-- URL cell -->
+                                                    <template if:true={cell.isUrl}>
+                                                        <a href={cell.value}
+                                                           target="_blank"
+                                                           rel="noopener noreferrer">
+                                                            {cell.value}
+                                                        </a>
+                                                    </template>
+                                                    <!-- Text cell -->
+                                                    <template if:true={cell.isText}>
+                                                        <div class="slds-truncate"
+                                                             title={cell.value}>
+                                                            {cell.value}
+                                                        </div>
+                                                    </template>
+                                                </td>
+                                            </template>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+
+                    <template if:false={hasTableData}>
+                        <div class="slds-illustration slds-illustration_small">
+                            <p class="slds-text-color_weak">
+                                No data returned for this Personalization Point.
+                            </p>
+                        </div>
+                    </template>
+                </template>
+
+                <!-- ── JSON View ─────────────────────────── -->
+                <template if:true={showJson}>
+                    <div class="json-wrapper">
+                        <pre class="json-block">{rawJson}</pre>
+                    </div>
+                </template>
+
+            </div>
+        </template>
+
+    </lightning-card>
+</template>

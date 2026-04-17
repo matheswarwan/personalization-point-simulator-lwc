@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RemoteSiteSetting xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Salesforce Personalization Decisioning API TSE endpoint</description>
+    <disableProtocolSecurity>false</disableProtocolSecurity>
+    <isActive>true</isActive>
+    <name>Personalization_TSE</name>
+    <url>https://m-4t1ytbgyzg8y3gg02wmnrymb.c360a.salesforce.com</url>
+</RemoteSiteSetting>
