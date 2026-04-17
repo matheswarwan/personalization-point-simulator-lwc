@@ -59,6 +59,20 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Recent visitor IDs from Website Engagement DMO -->
+                <template if:true={hasRecentIds}>
+                    <div class="slds-col slds-size_1-of-1">
+                        <lightning-combobox
+                            label="Recent Visitors (from Website Engagement)"
+                            placeholder="— pick a recent visitor —"
+                            options={recentIdOptions}
+                            onchange={handleRecentIdSelect}
+                            variant="label-stacked"
+                            class="recent-id-picker">
+                        </lightning-combobox>
+                    </div>
+                </template>
             </div>
 
             <!-- ── Error ──────────────────────────────────── -->

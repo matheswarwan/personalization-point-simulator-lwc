@@ -1,6 +1,7 @@
 import { LightningElement, api, track } from 'lwc';
 import getConfig from '@salesforce/apex/PersonalizationSimulatorController.getConfig';
 import getPersonalizationPointApiName from '@salesforce/apex/PersonalizationSimulatorController.getPersonalizationPointApiName';
+import getRecentDeviceIds from '@salesforce/apex/PersonalizationSimulatorController.getRecentDeviceIds';
 import simulate from '@salesforce/apex/PersonalizationSimulatorController.simulate';
 
 // ── Utilities ────────────────────────────────────────────────────
@@ -47,6 +48,9 @@ export default class PersonalizationSimulator extends LightningElement {
     // Personalization Point API name (from SOQL)
     @track ppApiName     = '';
 
+    // Recent device IDs from Website Engagement DMO
+    @track recentIdOptions = [];   // [{label, value}] for combobox
+
     // Response
     @track rawJson           = '';
     @track tableColumns      = [];
@@ -64,6 +68,7 @@ export default class PersonalizationSimulator extends LightningElement {
     connectedCallback() {
         this.loadConfig();
         this.loadApiName();
+        this.loadRecentDeviceIds();
     }
 
     async loadConfig() {
@@ -85,6 +90,25 @@ export default class PersonalizationSimulator extends LightningElement {
         }
     }
 
+    async loadRecentDeviceIds() {
+        try {
+            const ids = await getRecentDeviceIds();
+            if (ids && ids.length > 0) {
+                this.recentIdOptions = [
+                    { label: '— pick a recent visitor —', value: '' },
+                    ...ids.map((id, i) => ({
+                        label: i === 0 ? `${id}  (most recent)` : id,
+                        value: id
+                    }))
+                ];
+                // Auto-populate with most recent ID
+                this.individualId = ids[0];
+            }
+        } catch (e) {
+            // Non-fatal — fall back to random ID already set
+        }
+    }
+
     // ── Handlers ─────────────────────────────────────────────────
 
     handleTseUrlChange(event) {
@@ -97,6 +121,11 @@ export default class PersonalizationSimulator extends LightningElement {
 
     handleRandomize() {
         this.individualId = generateDeviceId();
+    }
+
+    handleRecentIdSelect(event) {
+        const selected = event.detail.value;
+        if (selected) this.individualId = selected;
     }
 
     handleToggleView(event) {
@@ -235,6 +264,10 @@ export default class PersonalizationSimulator extends LightningElement {
 
     get jsonButtonClass() {
         return 'slds-button slds-button_neutral' + (this.showJson ? ' slds-is-selected' : '');
+    }
+
+    get hasRecentIds() {
+        return this.recentIdOptions.length > 1;
     }
 
     get hasAttributes() {

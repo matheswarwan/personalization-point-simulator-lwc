@@ -41,6 +41,34 @@ public with sharing class PersonalizationSimulatorController {
         return result;
     }
 
+    // ─── Get Recent Device IDs from Website Engagement DMO ───────
+    // Returns up to 10 unique 16-char individualIds ordered by most recent engagement.
+    // 16-char hex strings are the anonymous device IDs set by the Personalization JS SDK.
+    @AuraEnabled(cacheable=true)
+    public static List<String> getRecentDeviceIds() {
+        List<SObject> records = Database.query(
+            'SELECT ssot__individualid__c ' +
+            'FROM ssot__WebsiteEngagement__dlm ' +
+            'WHERE ssot__individualid__c != null ' +
+            'ORDER BY ssot__engagementdatetm__c DESC NULLS LAST ' +
+            'LIMIT 500'
+        );
+
+        Set<String>  seen   = new Set<String>();
+        List<String> result = new List<String>();
+
+        for (SObject r : records) {
+            String id = (String) r.get('ssot__individualid__c');
+            if (id != null && id.length() == 16 && !seen.contains(id)) {
+                seen.add(id);
+                result.add(id);
+                if (result.size() == 10) break;
+            }
+        }
+
+        return result;
+    }
+
     // ─── Get Personalization Point API Name ───────────────────────
     @AuraEnabled(cacheable=true)
     public static String getPersonalizationPointApiName(String recordId) {
