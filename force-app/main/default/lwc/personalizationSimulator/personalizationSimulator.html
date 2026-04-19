@@ -266,12 +266,17 @@
                                     <button class="slds-button slds-button_neutral"
                                         data-key={entry.key} data-view="table"
                                         onclick={handleTabToggle}>
-                                        Table View
+                                        Table
+                                    </button>
+                                    <button class="slds-button slds-button_neutral"
+                                        data-key={entry.key} data-view="request"
+                                        onclick={handleTabToggle}>
+                                        Request
                                     </button>
                                     <button class="slds-button slds-button_neutral"
                                         data-key={entry.key} data-view="json"
                                         onclick={handleTabToggle}>
-                                        JSON View
+                                        Response
                                     </button>
                                 </div>
 
@@ -316,7 +321,14 @@
                                     </template>
                                 </template>
 
-                                <!-- JSON View -->
+                                <!-- Request JSON View -->
+                                <template if:true={entry.showRequest}>
+                                    <div class="json-wrapper">
+                                        <pre class="json-block">{entry.rawRequestJson}</pre>
+                                    </div>
+                                </template>
+
+                                <!-- Response JSON View -->
                                 <template if:true={entry.showJson}>
                                     <div class="json-wrapper">
                                         <pre class="json-block">{entry.rawJson}</pre>

@@ -45,6 +45,7 @@ function makeEntry(individualId, source, index) {
         hasResult:       false,
         error:           null,
         rawJson:         '',
+        rawRequestJson:  '',
         tableColumns:    [],
         tableRows:       [],
         attributeItems:  [],
@@ -53,6 +54,7 @@ function makeEntry(individualId, source, index) {
         httpStatus:      null,
         statusBadgeClass: '',
         showTable:       true,
+        showRequest:     false,
         showJson:        false
     };
 }
@@ -83,6 +85,7 @@ export default class PersonalizationSimulator extends LightningElement {
     connectedCallback() {
         this.entries = [makeEntry(null, 'random', 0)];
         this.requestTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+        this.restoreContext();
         this.loadConfig();
         this.loadApiName();
         this.loadRecentDeviceIds();
@@ -167,21 +170,74 @@ export default class PersonalizationSimulator extends LightningElement {
 
     // ── Handlers ─────────────────────────────────────────────────
 
-    handleRequestUrlChange(event)     { this.requestUrl     = event.target.value; }
-    handlePageTypeChange(event)       { this.pageType       = event.target.value; }
-    handleInteractionChange(event)    { this.interaction    = event.target.value; }
-    handleChannelContextChange(event) { this.channelContext = event.target.value; }
-    handleChannelChange(event)        { this.channel        = event.target.value; }
-    handleRequestTimeZoneChange(event){ this.requestTimeZone = event.target.value; }
+    saveContext() {
+        try {
+            const ctx = {
+                tseBaseUrl:    this.tseBaseUrl,
+                requestUrl:    this.requestUrl,
+                pageType:      this.pageType,
+                interaction:   this.interaction,
+                channel:       this.channel,
+                channelContext: this.channelContext,
+                requestTimeZone: this.requestTimeZone
+            };
+            localStorage.setItem('p13n_sim_context', JSON.stringify(ctx));
+        } catch (e) { /* storage unavailable */ }
+    }
+
+    restoreContext() {
+        try {
+            const raw = localStorage.getItem('p13n_sim_context');
+            if (!raw) return;
+            const ctx = JSON.parse(raw);
+            if (ctx.tseBaseUrl)     this.tseBaseUrl     = ctx.tseBaseUrl;
+            if (ctx.requestUrl)     this.requestUrl     = ctx.requestUrl;
+            if (ctx.pageType)       this.pageType       = ctx.pageType;
+            if (ctx.interaction)    this.interaction    = ctx.interaction;
+            if (ctx.channel)        this.channel        = ctx.channel;
+            if (ctx.channelContext) this.channelContext = ctx.channelContext;
+            if (ctx.requestTimeZone) this.requestTimeZone = ctx.requestTimeZone;
+        } catch (e) { /* corrupt storage — ignore */ }
+    }
+
+    handleRequestUrlChange(event)     { this.requestUrl     = event.target.value; this.saveContext(); }
+    handlePageTypeChange(event)       { this.pageType       = event.target.value; this.saveContext(); }
+    handleInteractionChange(event)    { this.interaction    = event.target.value; this.saveContext(); }
+    handleChannelContextChange(event) { this.channelContext = event.target.value; this.saveContext(); }
+    handleChannelChange(event)        { this.channel        = event.target.value; this.saveContext(); }
+    handleRequestTimeZoneChange(event){ this.requestTimeZone = event.target.value; this.saveContext(); }
 
     handleTseUrlChange(event) {
         this.tseBaseUrl = event.target.value;
+        this.saveContext();
     }
 
     handleTabToggle(event) {
         const key  = event.target.dataset.key;
         const view = event.target.dataset.view;
-        this.updateEntry(key, { showTable: view === 'table', showJson: view === 'json' });
+        this.updateEntry(key, {
+            showTable:   view === 'table',
+            showRequest: view === 'request',
+            showJson:    view === 'json'
+        });
+    }
+
+    buildRequestJson(individualId) {
+        const context = {
+            individualId: individualId,
+            dataspace:    this.dataspace || 'default'
+        };
+        if (this.requestUrl.trim())      context.requestUrl                = this.requestUrl.trim();
+        if (this.pageType.trim())        context.pageType                  = this.pageType.trim();
+        if (this.interaction.trim())     context.interaction               = this.interaction.trim();
+        if (this.channel.trim())         context.channel                   = this.channel.trim();
+        if (this.channelContext.trim())  context.channelContext             = this.channelContext.trim();
+        if (this.requestTimeZone.trim()) context.p13n_sys_requestTimeZone  = this.requestTimeZone.trim();
+
+        return JSON.stringify({
+            personalizationPoints: [{ name: this.ppApiName }],
+            context
+        }, null, 2);
     }
 
     async handleSimulate() {
@@ -214,6 +270,8 @@ export default class PersonalizationSimulator extends LightningElement {
         const entry = this.entries.find(e => e.key === key);
         if (!entry) return;
 
+        const rawRequestJson = this.buildRequestJson(entry.individualId.trim());
+
         try {
             const result = await simulate({
                 personalizationPointName: this.ppApiName,
@@ -233,20 +291,23 @@ export default class PersonalizationSimulator extends LightningElement {
             this.updateEntry(key, {
                 isLoading:        false,
                 hasResult:        result.success,
+                rawRequestJson:   rawRequestJson,
                 httpStatus:       result.httpStatus,
                 statusBadgeClass: result.httpStatus === 200
                     ? 'slds-badge slds-theme_success'
                     : 'slds-badge slds-theme_error',
-                error:     result.success ? null : (result.errorMessage || 'Unknown error'),
-                showTable: true,
-                showJson:  false,
+                error:        result.success ? null : (result.errorMessage || 'Unknown error'),
+                showTable:    true,
+                showRequest:  false,
+                showJson:     false,
                 ...parsed
             });
         } catch (e) {
             this.updateEntry(key, {
-                isLoading: false,
-                hasResult: false,
-                error:     e.body?.message || e.message
+                isLoading:      false,
+                hasResult:      false,
+                rawRequestJson: rawRequestJson,
+                error:          e.body?.message || e.message
             });
         }
     }
