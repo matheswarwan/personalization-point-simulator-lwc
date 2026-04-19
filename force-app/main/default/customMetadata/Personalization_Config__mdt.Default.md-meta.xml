@@ -6,7 +6,7 @@
     <protected>false</protected>
     <values>
         <field>TSE_Base_URL__c</field>
-        <value xsi:type="xsd:string">https://m-4t1ytbgyzg8y3gg02wmnrymb.c360a.salesforce.com</value>
+        <value xsi:type="xsd:string"></value>
     </values>
     <values>
         <field>Dataspace__c</field>

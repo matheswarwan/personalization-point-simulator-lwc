@@ -3,5 +3,5 @@
     <description>Salesforce Personalization Decisioning API TSE endpoint</description>
     <disableProtocolSecurity>false</disableProtocolSecurity>
     <isActive>true</isActive>
-    <url>https://m-4t1ytbgyzg8y3gg02wmnrymb.c360a.salesforce.com</url>
+    <url>https://YOUR-TSE-ORG.c360a.salesforce.com</url>
 </RemoteSiteSetting>

@@ -65,15 +65,24 @@ export default class PersonalizationSimulator extends LightningElement {
     @track entries      = [];
     @track tseBaseUrl   = '';
     @track dataspace    = 'default';
-    @track autoDetected = false;
-    @track ppApiName    = '';
-    @track recentIds    = [];
-    @track globalError  = null;
+    @track autoDetected    = false;
+    @track ppApiName       = '';
+    @track recentIds       = [];
+    @track globalError     = null;
+
+    // ── Request Context ──────────────────────────────────────────
+    @track requestUrl      = '';
+    @track pageType        = '';
+    @track interaction     = '';
+    @track channelContext  = '';
+    @track channel         = 'Web';
+    @track requestTimeZone = '';
 
     // ── Lifecycle ────────────────────────────────────────────────
 
     connectedCallback() {
         this.entries = [makeEntry(null, 'random', 0)];
+        this.requestTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
         this.loadConfig();
         this.loadApiName();
         this.loadRecentDeviceIds();
@@ -158,6 +167,13 @@ export default class PersonalizationSimulator extends LightningElement {
 
     // ── Handlers ─────────────────────────────────────────────────
 
+    handleRequestUrlChange(event)     { this.requestUrl     = event.target.value; }
+    handlePageTypeChange(event)       { this.pageType       = event.target.value; }
+    handleInteractionChange(event)    { this.interaction    = event.target.value; }
+    handleChannelContextChange(event) { this.channelContext = event.target.value; }
+    handleChannelChange(event)        { this.channel        = event.target.value; }
+    handleRequestTimeZoneChange(event){ this.requestTimeZone = event.target.value; }
+
     handleTseUrlChange(event) {
         this.tseBaseUrl = event.target.value;
     }
@@ -203,7 +219,13 @@ export default class PersonalizationSimulator extends LightningElement {
                 personalizationPointName: this.ppApiName,
                 individualId:            entry.individualId.trim(),
                 tseBaseUrl:              this.tseBaseUrl.trim(),
-                dataspace:               this.dataspace || 'default'
+                dataspace:               this.dataspace || 'default',
+                requestUrl:              this.requestUrl.trim(),
+                pageType:                this.pageType.trim(),
+                interaction:             this.interaction.trim(),
+                channelContext:          this.channelContext.trim(),
+                channel:                 this.channel.trim(),
+                requestTimeZone:         this.requestTimeZone.trim()
             });
 
             const parsed = result.success ? this.parseResponseData(result.responseJson) : {};

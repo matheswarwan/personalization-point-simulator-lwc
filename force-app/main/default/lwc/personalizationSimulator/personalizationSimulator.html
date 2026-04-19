@@ -36,6 +36,74 @@
             </template>
         </div>
 
+        <!-- ── Request Context ──────────────────────────────────── -->
+        <div class="slds-m-horizontal_medium slds-m-bottom_medium">
+            <p class="slds-text-title_caps slds-text-color_weak slds-m-bottom_x-small">Request Context</p>
+            <div class="slds-grid slds-gutters slds-wrap">
+
+                <div class="slds-col slds-size_1-of-1">
+                    <lightning-input
+                        label="Request URL"
+                        value={requestUrl}
+                        onchange={handleRequestUrlChange}
+                        placeholder="https://www.example.com/page"
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                    <lightning-input
+                        label="Page Type"
+                        value={pageType}
+                        onchange={handlePageTypeChange}
+                        placeholder="e.g. Courses"
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-2">
+                    <lightning-input
+                        label="Interaction"
+                        value={interaction}
+                        onchange={handleInteractionChange}
+                        placeholder="e.g. View Catalog Object"
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                    <lightning-input
+                        label="Channel"
+                        value={channel}
+                        onchange={handleChannelChange}
+                        placeholder="Web"
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                    <lightning-input
+                        label="Channel Context"
+                        value={channelContext}
+                        onchange={handleChannelContextChange}
+                        placeholder="e.g. www.example.com"
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                    <lightning-input
+                        label="Request Timezone"
+                        value={requestTimeZone}
+                        onchange={handleRequestTimeZoneChange}
+                        placeholder="e.g. America/Vancouver"
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+            </div>
+        </div>
+
         <!-- ── Visitor Entries ────────────────────────────────── -->
         <div class="slds-m-horizontal_medium slds-m-bottom_medium">
 

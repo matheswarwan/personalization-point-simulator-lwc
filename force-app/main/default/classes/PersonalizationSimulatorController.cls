@@ -93,7 +93,13 @@ public with sharing class PersonalizationSimulatorController {
         String personalizationPointName,
         String individualId,
         String tseBaseUrl,
-        String dataspace
+        String dataspace,
+        String requestUrl,
+        String pageType,
+        String interaction,
+        String channelContext,
+        String channel,
+        String requestTimeZone
     ) {
         String endpoint = tseBaseUrl.removeEnd('/') + '/personalization/decisions';
 
@@ -101,6 +107,13 @@ public with sharing class PersonalizationSimulatorController {
             'individualId' => individualId,
             'dataspace'    => String.isNotBlank(dataspace) ? dataspace : 'default'
         };
+
+        if (String.isNotBlank(requestUrl))      context.put('requestUrl',                requestUrl);
+        if (String.isNotBlank(pageType))        context.put('pageType',                  pageType);
+        if (String.isNotBlank(interaction))     context.put('interaction',               interaction);
+        if (String.isNotBlank(channel))         context.put('channel',                   channel);
+        if (String.isNotBlank(channelContext))  context.put('channelContext',            channelContext);
+        if (String.isNotBlank(requestTimeZone)) context.put('p13n_sys_requestTimeZone',  requestTimeZone);
 
         Map<String, Object> personalizationPoint = new Map<String, Object>{
             'name' => personalizationPointName
