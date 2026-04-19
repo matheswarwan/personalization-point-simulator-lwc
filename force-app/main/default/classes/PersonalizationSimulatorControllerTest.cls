@@ -50,7 +50,8 @@ private class PersonalizationSimulatorControllerTest {
             PersonalizationSimulatorController.SimulateResult result =
                 PersonalizationSimulatorController.simulate(
                     'PDP_Recs', 'd0cf39a5824a008d',
-                    'https://m-test.c360a.salesforce.com', 'default'
+                    'https://m-test.c360a.salesforce.com', 'default',
+                    null, null, null, null, null, null
                 );
             System.assertEquals(200, result.httpStatus);
             System.assertEquals(true, result.success);
@@ -71,7 +72,8 @@ private class PersonalizationSimulatorControllerTest {
             PersonalizationSimulatorController.SimulateResult result =
                 PersonalizationSimulatorController.simulate(
                     'PDP_Recs', 'test-id',
-                    'https://m-test.c360a.salesforce.com', 'default'
+                    'https://m-test.c360a.salesforce.com', 'default',
+                    null, null, null, null, null, null
                 );
             System.assertEquals(500, result.httpStatus);
             System.assertEquals(false, result.success);
