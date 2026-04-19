@@ -89,7 +89,8 @@ public with sharing class PersonalizationSimulatorController {
     // ─── Data Graph ───────────────────────────────────────────────
     // 1. Resolves ProfileDataGraphId from the PersonalizationPoint
     // 2. Resolves DataGraphApiName from the DataGraph object
-    // 3. Calls ConnectApi.CDPDataGraph.getDataGraphValues to fetch the profile
+    // 3. Queries the Data Graph's values DMO directly via SOQL
+    //    (avoids ConnectApi / HTTP callout org-edition requirements)
     @AuraEnabled
     public static String getDataGraphValues(String recordId, String individualId, String dataspace) {
         // Step 1: get linked DataGraph ID
@@ -106,21 +107,50 @@ public with sharing class PersonalizationSimulatorController {
 
         // Step 2: get DataGraphApiName
         List<SObject> dgRecs = Database.query(
-            'SELECT DataGraphApiName FROM DataGraph WHERE Id = :dgId LIMIT 1'
+            'SELECT DataGraphApiName, Name FROM DataGraph WHERE Id = :dgId LIMIT 1'
         );
         if (dgRecs.isEmpty()) {
             throw new AuraHandledException('DataGraph record not found: ' + dgId);
         }
         String dataGraphApiName = (String) dgRecs[0].get('DataGraphApiName');
+        String dataGraphName    = (String) dgRecs[0].get('Name');
 
-        // Step 3: query ConnectApi
+        // Step 3: query the values DMO — Data Cloud realtime data graphs expose
+        // their profile data via a DMO named {DataGraphApiName}__dlm.
+        // The individual ID field is ssot__IndividualId__c (standard on all Data Cloud DMOs).
+        String dmoName = dataGraphApiName + '__dlm';
+
         try {
-            String ns = String.isBlank(dataspace) ? 'default' : dataspace;
-            ConnectApi.DataGraphValuesDmo result =
-                ConnectApi.CDPDataGraph.getDataGraphValues(ns, dataGraphApiName, individualId);
-            return JSON.serialize(result);
+            List<SObject> rows = Database.query(
+                'SELECT FIELDS(ALL) FROM ' + dmoName +
+                ' WHERE ssot__IndividualId__c = :individualId' +
+                ' LIMIT 200'
+            );
+
+            List<Map<String, Object>> resultList = new List<Map<String, Object>>();
+            for (SObject row : rows) {
+                Map<String, Object> rowMap = new Map<String, Object>();
+                Map<String, Object> populated = row.getPopulatedFieldsAsMap();
+                for (String fieldName : populated.keySet()) {
+                    rowMap.put(fieldName, populated.get(fieldName));
+                }
+                resultList.add(rowMap);
+            }
+
+            Map<String, Object> response = new Map<String, Object>{
+                'dataGraph'    => dataGraphName,
+                'dataGraphApiName' => dataGraphApiName,
+                'dmoQueried'   => dmoName,
+                'individualId' => individualId,
+                'rowCount'     => rows.size(),
+                'rows'         => resultList
+            };
+            return JSON.serializePretty(response);
+
         } catch (Exception e) {
-            throw new AuraHandledException('Data Graph query failed: ' + e.getMessage());
+            throw new AuraHandledException(
+                'Failed to query DMO "' + dmoName + '": ' + e.getMessage()
+            );
         }
     }
 
