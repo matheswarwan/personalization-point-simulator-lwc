@@ -94,7 +94,8 @@ export default class PersonalizationSimulator extends LightningElement {
     async loadConfig() {
         try {
             const config = await getConfig();
-            this.tseBaseUrl   = config.tseBaseUrl   || '';
+            // Only use config URL if localStorage didn't already restore one
+            if (!this.tseBaseUrl) this.tseBaseUrl = config.tseBaseUrl || '';
             this.dataspace    = config.dataspace     || 'default';
             this.autoDetected = config.autoDetected  || false;
         } catch (e) {
