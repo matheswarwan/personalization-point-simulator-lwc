@@ -3,6 +3,7 @@ import getConfig from '@salesforce/apex/PersonalizationSimulatorController.getCo
 import getPersonalizationPointApiName from '@salesforce/apex/PersonalizationSimulatorController.getPersonalizationPointApiName';
 import getRecentDeviceIds from '@salesforce/apex/PersonalizationSimulatorController.getRecentDeviceIds';
 import simulate from '@salesforce/apex/PersonalizationSimulatorController.simulate';
+import getDataGraphValues from '@salesforce/apex/PersonalizationSimulatorController.getDataGraphValues';
 
 // ── Utilities ────────────────────────────────────────────────────
 
@@ -55,7 +56,11 @@ function makeEntry(individualId, source, index) {
         statusBadgeClass: '',
         showTable:       true,
         showRequest:     false,
-        showJson:        false
+        showJson:        false,
+        dataGraphLoading: false,
+        dataGraphResult:  null,
+        dataGraphError:   null,
+        showDataGraph:    false
     };
 }
 
@@ -217,10 +222,49 @@ export default class PersonalizationSimulator extends LightningElement {
         const key  = event.target.dataset.key;
         const view = event.target.dataset.view;
         this.updateEntry(key, {
-            showTable:   view === 'table',
-            showRequest: view === 'request',
-            showJson:    view === 'json'
+            showTable:     view === 'table',
+            showRequest:   view === 'request',
+            showJson:      view === 'json',
+            showDataGraph: view === 'datagraph'
         });
+    }
+
+    async handleDataGraphLookup(event) {
+        const key   = event.target.dataset.key;
+        const entry = this.entries.find(e => e.key === key);
+        if (!entry || !entry.individualId?.trim()) return;
+
+        // If already loaded, just toggle the view
+        if (entry.dataGraphResult) {
+            this.updateEntry(key, {
+                showTable: false, showRequest: false, showJson: false, showDataGraph: true
+            });
+            return;
+        }
+
+        this.updateEntry(key, {
+            dataGraphLoading: true, dataGraphError: null,
+            showTable: false, showRequest: false, showJson: false, showDataGraph: true
+        });
+
+        try {
+            const raw = await getDataGraphValues({
+                recordId:     this.recordId,
+                individualId: entry.individualId.trim(),
+                dataspace:    this.dataspace || 'default'
+            });
+            this.updateEntry(key, {
+                dataGraphLoading: false,
+                dataGraphResult:  this.formatJson(raw),
+                dataGraphError:   null
+            });
+        } catch (e) {
+            this.updateEntry(key, {
+                dataGraphLoading: false,
+                dataGraphResult:  null,
+                dataGraphError:   e.body?.message || e.message
+            });
+        }
     }
 
     buildRequestJson(individualId) {
@@ -370,7 +414,7 @@ export default class PersonalizationSimulator extends LightningElement {
     get canRemove()    { return this.entries.length > 1; }
     get entryCount()   { return `${this.entries.length} / 10 visitors`; }
     get isSimulating() { return this.entries.some(e => e.isLoading); }
-    get hasResults()   { return this.entries.some(e => e.isLoading || e.hasResult || e.error); }
+    get hasResults()   { return this.entries.some(e => e.isLoading || e.hasResult || e.error || e.dataGraphLoading || e.dataGraphResult || e.dataGraphError); }
 
     get simulateButtonLabel() {
         if (this.isSimulating) return 'Simulating...';
