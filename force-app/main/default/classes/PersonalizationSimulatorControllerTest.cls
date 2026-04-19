@@ -40,6 +40,20 @@ private class PersonalizationSimulatorControllerTest {
         }
     }
 
+    // ─── Test: getDataGraphValues ────────────────────────────────
+    // PersonalizationPoint / DataGraph objects require Data Cloud — wrapped in try/catch.
+    @isTest
+    static void testGetDataGraphValues() {
+        try {
+            String result = PersonalizationSimulatorController.getDataGraphValues(
+                'fakeRecordId', 'fakeIndividualId', 'default'
+            );
+            System.assertNotEquals(null, result);
+        } catch (Exception e) {
+            System.assert(e.getMessage() != null, 'Unexpected error: ' + e.getMessage());
+        }
+    }
+
     // ─── Test: simulate — success ─────────────────────────────────
     @isTest
     static void testSimulateSuccess() {

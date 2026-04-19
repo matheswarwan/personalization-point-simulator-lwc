@@ -86,6 +86,44 @@ public with sharing class PersonalizationSimulatorController {
         return (String) records[0].get('DeveloperName');
     }
 
+    // ─── Data Graph ───────────────────────────────────────────────
+    // 1. Resolves ProfileDataGraphId from the PersonalizationPoint
+    // 2. Resolves DataGraphApiName from the DataGraph object
+    // 3. Calls ConnectApi.CDPDataGraph.getDataGraphValues to fetch the profile
+    @AuraEnabled
+    public static String getDataGraphValues(String recordId, String individualId, String dataspace) {
+        // Step 1: get linked DataGraph ID
+        List<SObject> ppRecs = Database.query(
+            'SELECT ProfileDataGraphId FROM PersonalizationPoint WHERE Id = :recordId LIMIT 1'
+        );
+        if (ppRecs.isEmpty()) {
+            throw new AuraHandledException('PersonalizationPoint not found: ' + recordId);
+        }
+        String dgId = (String) ppRecs[0].get('ProfileDataGraphId');
+        if (String.isBlank(dgId)) {
+            throw new AuraHandledException('No Data Graph is linked to this Personalization Point.');
+        }
+
+        // Step 2: get DataGraphApiName
+        List<SObject> dgRecs = Database.query(
+            'SELECT DataGraphApiName FROM DataGraph WHERE Id = :dgId LIMIT 1'
+        );
+        if (dgRecs.isEmpty()) {
+            throw new AuraHandledException('DataGraph record not found: ' + dgId);
+        }
+        String dataGraphApiName = (String) dgRecs[0].get('DataGraphApiName');
+
+        // Step 3: query ConnectApi
+        try {
+            String ns = String.isBlank(dataspace) ? 'default' : dataspace;
+            ConnectApi.DataGraphValuesDmo result =
+                ConnectApi.CDPDataGraph.getDataGraphValues(ns, dataGraphApiName, individualId);
+            return JSON.serialize(result);
+        } catch (Exception e) {
+            throw new AuraHandledException('Data Graph query failed: ' + e.getMessage());
+        }
+    }
+
     // ─── Simulate ─────────────────────────────────────────────────
     // tseBaseUrl is passed explicitly so the user's in-place edit is always used
     @AuraEnabled

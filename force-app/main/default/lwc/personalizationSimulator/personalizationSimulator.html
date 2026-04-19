@@ -262,22 +262,42 @@
                                 </template>
 
                                 <!-- View toggle -->
-                                <div class="slds-button-group slds-m-bottom_small" role="group">
-                                    <button class="slds-button slds-button_neutral"
-                                        data-key={entry.key} data-view="table"
-                                        onclick={handleTabToggle}>
-                                        Table
-                                    </button>
-                                    <button class="slds-button slds-button_neutral"
-                                        data-key={entry.key} data-view="request"
-                                        onclick={handleTabToggle}>
-                                        Request
-                                    </button>
-                                    <button class="slds-button slds-button_neutral"
-                                        data-key={entry.key} data-view="json"
-                                        onclick={handleTabToggle}>
-                                        Response
-                                    </button>
+                                <div class="slds-grid slds-m-bottom_small" style="gap: 0.5rem; align-items: center;">
+                                    <div class="slds-col slds-no-flex">
+                                        <div class="slds-button-group" role="group">
+                                            <button class="slds-button slds-button_neutral"
+                                                data-key={entry.key} data-view="table"
+                                                onclick={handleTabToggle}>
+                                                Table
+                                            </button>
+                                            <button class="slds-button slds-button_neutral"
+                                                data-key={entry.key} data-view="request"
+                                                onclick={handleTabToggle}>
+                                                Request
+                                            </button>
+                                            <button class="slds-button slds-button_neutral"
+                                                data-key={entry.key} data-view="json"
+                                                onclick={handleTabToggle}>
+                                                Response
+                                            </button>
+                                            <button class="slds-button slds-button_neutral"
+                                                data-key={entry.key} data-view="datagraph"
+                                                onclick={handleTabToggle}>
+                                                Data Graph
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="slds-col slds-no-flex">
+                                        <lightning-button
+                                            label="Lookup Profile"
+                                            icon-name="utility:identity"
+                                            data-key={entry.key}
+                                            onclick={handleDataGraphLookup}
+                                            variant="neutral"
+                                            size="small"
+                                            disabled={entry.dataGraphLoading}>
+                                        </lightning-button>
+                                    </div>
                                 </div>
 
                                 <!-- Table View -->
@@ -335,6 +355,81 @@
                                     </div>
                                 </template>
 
+                                <!-- Data Graph View -->
+                                <template if:true={entry.showDataGraph}>
+                                    <template if:true={entry.dataGraphLoading}>
+                                        <div class="slds-m-around_medium slds-align_absolute-center">
+                                            <lightning-spinner alternative-text="Fetching Data Graph..." size="medium"></lightning-spinner>
+                                            <p class="slds-m-top_small slds-text-color_weak">Fetching Data Graph profile...</p>
+                                        </div>
+                                    </template>
+                                    <template if:true={entry.dataGraphError}>
+                                        <div class="slds-notify slds-notify_alert slds-theme_error slds-m-around_medium" role="alert">
+                                            <lightning-icon icon-name="utility:error" size="x-small"
+                                                alternative-text="Error" class="slds-m-right_x-small">
+                                            </lightning-icon>
+                                            {entry.dataGraphError}
+                                        </div>
+                                    </template>
+                                    <template if:true={entry.dataGraphResult}>
+                                        <div class="json-wrapper">
+                                            <pre class="json-block">{entry.dataGraphResult}</pre>
+                                        </div>
+                                    </template>
+                                    <template if:false={entry.dataGraphLoading}>
+                                        <template if:false={entry.dataGraphResult}>
+                                            <template if:false={entry.dataGraphError}>
+                                                <p class="slds-text-color_weak slds-m-around_medium">
+                                                    Click "Lookup Profile" to fetch the Data Graph profile for this visitor.
+                                                </p>
+                                            </template>
+                                        </template>
+                                    </template>
+                                </template>
+
+                            </template>
+
+                            <!-- Data Graph lookup available even without a simulate result -->
+                            <template if:false={entry.hasResult}>
+                                <template if:false={entry.isLoading}>
+                                    <div class="slds-m-around_medium">
+                                        <div class="slds-grid slds-gutters slds-m-bottom_small" style="align-items: center;">
+                                            <p class="slds-col slds-text-color_weak slds-text-body_small">
+                                                Lookup this visitor's Data Graph profile without simulating.
+                                            </p>
+                                            <div class="slds-col slds-no-flex">
+                                                <lightning-button
+                                                    label="Lookup Profile"
+                                                    icon-name="utility:identity"
+                                                    data-key={entry.key}
+                                                    onclick={handleDataGraphLookup}
+                                                    variant="neutral"
+                                                    disabled={entry.dataGraphLoading}>
+                                                </lightning-button>
+                                            </div>
+                                        </div>
+
+                                        <template if:true={entry.dataGraphLoading}>
+                                            <div class="slds-align_absolute-center slds-m-top_medium">
+                                                <lightning-spinner alternative-text="Fetching Data Graph..." size="medium"></lightning-spinner>
+                                                <p class="slds-m-top_small slds-text-color_weak">Fetching Data Graph profile...</p>
+                                            </div>
+                                        </template>
+                                        <template if:true={entry.dataGraphError}>
+                                            <div class="slds-notify slds-notify_alert slds-theme_error" role="alert">
+                                                <lightning-icon icon-name="utility:error" size="x-small"
+                                                    alternative-text="Error" class="slds-m-right_x-small">
+                                                </lightning-icon>
+                                                {entry.dataGraphError}
+                                            </div>
+                                        </template>
+                                        <template if:true={entry.dataGraphResult}>
+                                            <div class="json-wrapper">
+                                                <pre class="json-block">{entry.dataGraphResult}</pre>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
                             </template>
                         </lightning-tab>
                     </template>
