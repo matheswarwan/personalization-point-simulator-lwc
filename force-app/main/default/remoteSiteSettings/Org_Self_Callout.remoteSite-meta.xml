@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RemoteSiteSetting xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Org My Domain URL — required for Data Graph API self-callout. Update this URL to match your org's My Domain (e.g. https://myorg.my.salesforce.com)</description>
+    <disableProtocolSecurity>false</disableProtocolSecurity>
+    <isActive>true</isActive>
+    <url>https://YOUR-ORG.my.salesforce.com</url>
+</RemoteSiteSetting>

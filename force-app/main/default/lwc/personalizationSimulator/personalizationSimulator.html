@@ -17,6 +17,16 @@
 
                 <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
                     <lightning-input
+                        label="Org Base URL"
+                        value={orgBaseUrl}
+                        onchange={handleOrgBaseUrlChange}
+                        placeholder="https://myorg.my.salesforce.com"
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                    <lightning-input
                         label="Personalization Point"
                         value={ppApiName}
                         disabled

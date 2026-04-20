@@ -72,6 +72,7 @@ export default class PersonalizationSimulator extends LightningElement {
     @track entries      = [];
     @track tseBaseUrl   = '';
     @track dataspace    = 'default';
+    @track orgBaseUrl   = '';
     @track autoDetected    = false;
     @track ppApiName       = '';
     @track recentIds       = [];
@@ -99,8 +100,9 @@ export default class PersonalizationSimulator extends LightningElement {
     async loadConfig() {
         try {
             const config = await getConfig();
-            // Only use config URL if localStorage didn't already restore one
-            if (!this.tseBaseUrl) this.tseBaseUrl = config.tseBaseUrl || '';
+            // Only use config URLs if localStorage didn't already restore them
+            if (!this.tseBaseUrl)  this.tseBaseUrl  = config.tseBaseUrl  || '';
+            if (!this.orgBaseUrl)  this.orgBaseUrl  = config.orgBaseUrl  || '';
             this.dataspace    = config.dataspace     || 'default';
             this.autoDetected = config.autoDetected  || false;
         } catch (e) {
@@ -180,6 +182,7 @@ export default class PersonalizationSimulator extends LightningElement {
         try {
             const ctx = {
                 tseBaseUrl:    this.tseBaseUrl,
+                orgBaseUrl:    this.orgBaseUrl,
                 requestUrl:    this.requestUrl,
                 pageType:      this.pageType,
                 interaction:   this.interaction,
@@ -197,6 +200,7 @@ export default class PersonalizationSimulator extends LightningElement {
             if (!raw) return;
             const ctx = JSON.parse(raw);
             if (ctx.tseBaseUrl)     this.tseBaseUrl     = ctx.tseBaseUrl;
+            if (ctx.orgBaseUrl)     this.orgBaseUrl     = ctx.orgBaseUrl;
             if (ctx.requestUrl)     this.requestUrl     = ctx.requestUrl;
             if (ctx.pageType)       this.pageType       = ctx.pageType;
             if (ctx.interaction)    this.interaction    = ctx.interaction;
@@ -215,6 +219,11 @@ export default class PersonalizationSimulator extends LightningElement {
 
     handleTseUrlChange(event) {
         this.tseBaseUrl = event.target.value;
+        this.saveContext();
+    }
+
+    handleOrgBaseUrlChange(event) {
+        this.orgBaseUrl = event.target.value;
         this.saveContext();
     }
 
@@ -251,7 +260,8 @@ export default class PersonalizationSimulator extends LightningElement {
             const raw = await getDataGraphValues({
                 recordId:     this.recordId,
                 individualId: entry.individualId.trim(),
-                dataspace:    this.dataspace || 'default'
+                dataspace:    this.dataspace || 'default',
+                orgBaseUrl:   this.orgBaseUrl.trim()
             });
             this.updateEntry(key, {
                 dataGraphLoading: false,

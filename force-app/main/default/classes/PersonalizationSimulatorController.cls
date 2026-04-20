@@ -5,6 +5,7 @@ public with sharing class PersonalizationSimulatorController {
         @AuraEnabled public String tseBaseUrl;
         @AuraEnabled public String dataspace;
         @AuraEnabled public Boolean autoDetected; // true = came from ConnectApi
+        @AuraEnabled public String orgBaseUrl;    // My Domain URL for Data Graph self-callout
     }
 
     // ─── Response DTO ─────────────────────────────────────────────
@@ -24,17 +25,19 @@ public with sharing class PersonalizationSimulatorController {
 
         try {
             Personalization_Config__mdt config = [
-                SELECT TSE_Base_URL__c, Dataspace__c
+                SELECT TSE_Base_URL__c, Dataspace__c, Org_Base_URL__c
                 FROM Personalization_Config__mdt
                 WHERE Is_Active__c = true
                 LIMIT 1
             ];
             result.tseBaseUrl   = config.TSE_Base_URL__c;
             result.dataspace    = config.Dataspace__c;
+            result.orgBaseUrl   = config.Org_Base_URL__c;
             result.autoDetected = false;
         } catch (Exception e) {
             result.tseBaseUrl   = '';
             result.dataspace    = 'default';
+            result.orgBaseUrl   = '';
             result.autoDetected = false;
         }
 
@@ -92,7 +95,13 @@ public with sharing class PersonalizationSimulatorController {
     // 3. Queries the Data Graph's values DMO directly via SOQL
     //    (avoids ConnectApi / HTTP callout org-edition requirements)
     @AuraEnabled
-    public static String getDataGraphValues(String recordId, String individualId, String dataspace) {
+    public static String getDataGraphValues(String recordId, String individualId, String dataspace, String orgBaseUrl) {
+        if (String.isBlank(orgBaseUrl)) {
+            throw new AuraHandledException(
+                'Org Base URL is not configured. Add your org\'s My Domain URL (e.g. https://myorg.my.salesforce.com) to Personalization_Config__mdt and the Org_Self_Callout Remote Site Setting.'
+            );
+        }
+
         // Step 1: get linked DataGraph ID
         List<SObject> ppRecs = Database.query(
             'SELECT ProfileDataGraphId FROM PersonalizationPoint WHERE Id = :recordId LIMIT 1'
@@ -107,50 +116,41 @@ public with sharing class PersonalizationSimulatorController {
 
         // Step 2: get DataGraphApiName
         List<SObject> dgRecs = Database.query(
-            'SELECT DataGraphApiName, Name FROM DataGraph WHERE Id = :dgId LIMIT 1'
+            'SELECT DataGraphApiName FROM DataGraph WHERE Id = :dgId LIMIT 1'
         );
         if (dgRecs.isEmpty()) {
             throw new AuraHandledException('DataGraph record not found: ' + dgId);
         }
         String dataGraphApiName = (String) dgRecs[0].get('DataGraphApiName');
-        String dataGraphName    = (String) dgRecs[0].get('Name');
 
-        // Step 3: query the values DMO — Data Cloud realtime data graphs expose
-        // their profile data via a DMO named {DataGraphApiName}__dlm.
-        // The individual ID field is ssot__IndividualId__c (standard on all Data Cloud DMOs).
-        String dmoName = dataGraphApiName + '__dlm';
+        // Step 3: call the Data Cloud REST API on this org
+        // Endpoint: GET /services/data/v62.0/c360a/dataGraphValues/{dataspace}/{dataGraphApiName}/{individualId}
+        String ns       = String.isBlank(dataspace) ? 'default' : dataspace;
+        String endpoint = orgBaseUrl.removeEnd('/')
+            + '/services/data/v62.0/c360a/dataGraphValues/'
+            + EncodingUtil.urlEncode(ns, 'UTF-8') + '/'
+            + EncodingUtil.urlEncode(dataGraphApiName, 'UTF-8') + '/'
+            + EncodingUtil.urlEncode(individualId, 'UTF-8');
+
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(endpoint);
+        req.setMethod('GET');
+        req.setHeader('Authorization', 'Bearer ' + UserInfo.getSessionId());
+        req.setHeader('Content-Type', 'application/json');
+        req.setTimeout(30000);
 
         try {
-            List<SObject> rows = Database.query(
-                'SELECT FIELDS(ALL) FROM ' + dmoName +
-                ' WHERE ssot__IndividualId__c = :individualId' +
-                ' LIMIT 200'
-            );
-
-            List<Map<String, Object>> resultList = new List<Map<String, Object>>();
-            for (SObject row : rows) {
-                Map<String, Object> rowMap = new Map<String, Object>();
-                Map<String, Object> populated = row.getPopulatedFieldsAsMap();
-                for (String fieldName : populated.keySet()) {
-                    rowMap.put(fieldName, populated.get(fieldName));
-                }
-                resultList.add(rowMap);
+            HttpResponse res = new Http().send(req);
+            if (res.getStatusCode() == 200) {
+                return res.getBody();
             }
-
-            Map<String, Object> response = new Map<String, Object>{
-                'dataGraph'    => dataGraphName,
-                'dataGraphApiName' => dataGraphApiName,
-                'dmoQueried'   => dmoName,
-                'individualId' => individualId,
-                'rowCount'     => rows.size(),
-                'rows'         => resultList
-            };
-            return JSON.serializePretty(response);
-
-        } catch (Exception e) {
             throw new AuraHandledException(
-                'Failed to query DMO "' + dmoName + '": ' + e.getMessage()
+                'Data Graph API returned HTTP ' + res.getStatusCode() + ': ' + res.getBody()
             );
+        } catch (AuraHandledException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AuraHandledException('Data Graph query failed: ' + e.getMessage());
         }
     }
 

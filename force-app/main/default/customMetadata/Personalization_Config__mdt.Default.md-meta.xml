@@ -16,4 +16,8 @@
         <field>Is_Active__c</field>
         <value xsi:type="xsd:boolean">true</value>
     </values>
+    <values>
+        <field>Org_Base_URL__c</field>
+        <value xsi:type="xsd:string"></value>
+    </values>
 </CustomMetadata>

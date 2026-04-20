@@ -46,7 +46,7 @@ private class PersonalizationSimulatorControllerTest {
     static void testGetDataGraphValues() {
         try {
             String result = PersonalizationSimulatorController.getDataGraphValues(
-                'fakeRecordId', 'fakeIndividualId', 'default'
+                'fakeRecordId', 'fakeIndividualId', 'default', 'https://fake.my.salesforce.com'
             );
             System.assertNotEquals(null, result);
         } catch (Exception e) {
