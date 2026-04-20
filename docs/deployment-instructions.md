@@ -1,112 +1,109 @@
 # Deployment Instructions — Personalization Point Simulator
 
+## Target Orgs
+
+| Alias | Username | Notes |
+|-------|----------|-------|
+| `tac-uat` | mkanagarajan@eigenx.com.uat | Primary test org |
+| `sfp13n-plc-2026-v2` | mathes.kanagarajan@cloudkettle.com.sfp13n.plc.2026.v2 | Secondary |
+
+---
+
 ## Prerequisites
 
-- Salesforce CLI (`sf` or `sfdx`) installed and on your PATH
-- A Salesforce org with **Salesforce Personalization (Data Cloud-native)** enabled
-- Your org's **TSE URL** (e.g. `https://m-4t1ytbgyzg8y3gg02wmnrymb.c360a.salesforce.com`)
-- Authenticated to the target org:
-  ```bash
-  sf org login web --alias myorg
-  ```
+- Salesforce CLI (`sf`) installed and on PATH
+- Authenticated: `sf org login web --alias tac-uat`
+- Org has **Salesforce Personalization (Data Cloud-native)** enabled
 
 ---
 
-## Step 1 — Update Remote Site Setting
+## Deploy Command
 
-Before deploying, edit `force-app/main/default/remoteSiteSettings/Personalization_TSE.remoteSite-meta.xml` and replace the placeholder URL:
+```bash
+sf project deploy start --source-dir force-app --target-org tac-uat
+```
 
+To deploy to both orgs:
+```bash
+sf project deploy start --source-dir force-app --target-org tac-uat
+sf project deploy start --source-dir force-app --target-org sfp13n-plc-2026-v2
+```
+
+---
+
+## Post-Deploy Configuration (Admin, one-time per org)
+
+### 1. Update TSE Remote Site Setting
+
+**In Salesforce UI**: Setup → Remote Site Settings → `Personalization_TSE` → Edit → update URL to the org's TSE base URL (e.g. `https://m-xxxx.c360a.salesforce.com`)
+
+**OR** update before deploy:
 ```xml
-<url>https://YOUR-ACTUAL-TSE-DOMAIN.c360a.salesforce.com</url>
+<!-- force-app/main/default/remoteSiteSettings/Personalization_TSE.remoteSite-meta.xml -->
+<url>https://YOUR-ACTUAL-TSE.c360a.salesforce.com</url>
 ```
 
-Save the file, then proceed to Step 2.
+### 2. Update Org Self-Callout Remote Site Setting ⚠️ REQUIRED FOR DATA GRAPH
 
----
+**In Salesforce UI**: Setup → Remote Site Settings → `Org_Self_Callout` → Edit → update URL to the org's My Domain URL (e.g. `https://tac-uat.my.salesforce.com`)
 
-## Step 2 — Deploy to Org
-
-```bash
-sf project deploy start \
-  --source-dir force-app \
-  --target-org myorg \
-  --wait 10
-```
-
-Or using legacy SFDX:
-```bash
-sfdx force:source:deploy -p force-app -u myorg
-```
-
----
-
-## Step 3 — Configure Custom Metadata Record
-
-After deployment, set the TSE URL in the metadata record.
-
-**Option A — Via Salesforce UI (quickest):**
-1. Setup → Custom Metadata Types → **Personalization Config** → Manage Records
-2. Click **Default** → Edit
-3. Set `TSE Base URL` = your TSE base URL (no trailing slash)
-4. Set `Dataspace` = `default` (or your org's dataspace name if different)
-5. Ensure `Is Active` = checked
-6. Save
-
-**Option B — Update XML and redeploy (version-controlled):**
-
-Edit `force-app/main/default/customMetadata/Personalization_Config__mdt.Default.md-meta.xml`:
+**OR** update before deploy:
 ```xml
-<value xsi:type="xsd:string">https://your-tse-url.c360a.salesforce.com</value>
+<!-- force-app/main/default/remoteSiteSettings/Org_Self_Callout.remoteSite-meta.xml -->
+<url>https://YOUR-ORG.my.salesforce.com</url>
 ```
-Then re-run Step 2.
 
----
+> ⚠️ Without this, the "Lookup Profile" (Data Graph) button will fail with a callout error.  
+> Note: A fully automatic solution is being investigated — see claude-context.md.
 
-## Step 4 — Assign Permission Set
+### 3. Update Custom Metadata
 
-Assign to users who need access to the Simulator:
+Setup → Custom Metadata Types → **Personalization Config** → Manage Records → Default → Edit:
+
+| Field | Value |
+|-------|-------|
+| TSE Base URL | `https://your-tse.c360a.salesforce.com` |
+| Dataspace | `default` (or org-specific) |
+| Is Active | ✅ checked |
+| Org Base URL | `https://your-org.my.salesforce.com` (same as Remote Site above) |
+
+> Note: `Org Base URL` and `Org_Self_Callout` remote site must match.
+
+### 4. Assign Permission Set
 
 ```bash
-sf org assign permset \
-  --name Personalization_Simulator_Access \
-  --target-org myorg \
-  --on-behalf-of user@example.com
+sf org assign permset --name Personalization_Simulator_Access --target-org tac-uat --on-behalf-of user@example.com
 ```
 
-Or in Setup → Users → select user → Permission Set Assignments → Add → **Personalization Simulator Access**.
+Or: Setup → Users → [user] → Permission Set Assignments → Add → **Personalization Simulator Access**
+
+### 5. Add Component to Record Page
+
+1. Open any **Personalization Point** record
+2. Gear icon → **Edit Page**
+3. Find `personalizationSimulator` under Custom components
+4. Drag to full-width region below standard detail
+5. Save → Activate → Org Default
 
 ---
 
-## Step 5 — Add Component to Record Page
+## Running Tests
 
-1. Navigate to any **Personalization Point** record in your org
-2. Click the gear icon → **Edit Page** (Lightning App Builder)
-3. In the component panel (left sidebar), find **`personalizationSimulator`** under Custom components
-4. Drag it onto the page — recommended: full-width region below the standard detail
-5. Click **Save** → **Activate** → activate for **Org Default** (or specific profiles as needed)
-6. Click **Back** to return to the record
+```bash
+sf apex run test --class-names PersonalizationSimulatorControllerTest --target-org tac-uat --result-format human
+```
 
----
-
-## Step 6 — Verify
-
-1. Open any Personalization Point record
-2. The **Personalization Simulator** card should appear
-3. Confirm:
-   - **TSE Base URL** shows your configured URL
-   - **Personalization Point** field auto-populates with the record's API name
-   - **Individual / Device ID** is pre-filled with a random 16-char hex string
-4. Click **Simulate** → verify a response table appears with columns matching the Personalization Point's response template fields
+Expected: all tests pass. Tests wrap Data Cloud SOQL in try/catch since `PersonalizationPoint`, `DataGraph`, `ssot__WebsiteEngagement__dlm` may not exist in orgs without Data Cloud.
 
 ---
 
 ## Troubleshooting
 
-| Symptom | Likely Cause | Fix |
-|---------|-------------|-----|
-| `TSE Base URL not configured` | Custom Metadata record not updated | Complete Step 3 |
-| `Failed to load Personalization Point API name` | Object/field API name mismatch | Verify `PersonalizationPoint` object and `DeveloperName` field exist in org — adjust SOQL in Apex if needed |
-| `Unauthorized` / HTTP 401 from API | TSE URL incorrect or org mismatch | Double-check TSE URL in Custom Metadata |
-| Remote Site blocked callout error | Remote Site Setting not updated | Complete Step 1 and redeploy |
-| Thumbnails not rendering | CORS on image URLs | Expected for some external domains; images from `*.salesforce.com` should work. For others, add CSP Trusted Sites in Setup |
-| Component not visible in App Builder | Permission or target object mismatch | Verify `js-meta.xml` has correct object name and redeploy |
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| TSE URL field blank | Custom Metadata not set | Step 3 above |
+| Data Graph "callout error" | `Org_Self_Callout` Remote Site not updated | Step 2 above |
+| Data Graph "Org Base URL not configured" | `Org_Base_URL__c` in custom metadata empty | Step 3 above |
+| `PersonalizationPoint not found` | Wrong record context | Ensure component is on a PersonalizationPoint record page |
+| `Insufficient Privileges` | Permission set not assigned | Step 4 above |
+| Component not in App Builder | API version or object mismatch | Verify `js-meta.xml` target object is `PersonalizationPoint` |
