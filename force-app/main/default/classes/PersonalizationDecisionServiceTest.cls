@@ -164,9 +164,15 @@ private class PersonalizationDecisionServiceTest {
         System.assert(threw, 'missing individualId should throw');
     }
 
+    private class ThrowingMock implements HttpCalloutMock {
+        public HttpResponse respond(HttpRequest req) {
+            throw new CalloutException('Read timed out');
+        }
+    }
+
     @isTest
     static void calloutExceptionIsCaught() {
-        // No mock set: the callout throws in a test, and the result reports it.
+        Test.setMock(HttpCalloutMock.class, new ThrowingMock());
         PersonalizationDecisionService.DecisionResult r = PersonalizationDecisionService.decide('PP', TSE, ctx(), 'unauthenticated', null);
         System.assertEquals(false, r.success);
         System.assertEquals(0, r.httpStatus);
