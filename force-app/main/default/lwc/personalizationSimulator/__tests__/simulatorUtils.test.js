@@ -1,6 +1,6 @@
 import {
     contextRowsToMap, buildContext, extractDecisionInfo, answeredPoints, flattenJson,
-    diffResponses, escapeHtml, renderTemplate, templateData, previewDocument
+    diffResponses, escapeHtml, renderTemplate, templateData, previewDocument, previewDataUrl
 } from '../simulatorUtils';
 
 describe('request context', () => {
@@ -132,5 +132,6 @@ describe('template preview', () => {
         const doc = previewDocument('<p>x</p>');
         expect(doc).toContain("default-src 'none'");
         expect(doc).toContain('<p>x</p>');
+        expect(previewDataUrl('<p>a b</p>')).toBe('data:text/html;charset=utf-8,%3Cp%3Ea%20b%3C%2Fp%3E');
     });
 });

@@ -248,3 +248,8 @@ export function previewDocument(html) {
         + '<style>body{font-family:system-ui,sans-serif;margin:8px}</style></head><body>'
         + html + '</body></html>';
 }
+
+/** The preview document as a data: URL for an iframe src (LWC templates disallow srcdoc). */
+export function previewDataUrl(doc) {
+    return 'data:text/html;charset=utf-8,' + encodeURIComponent(doc);
+}

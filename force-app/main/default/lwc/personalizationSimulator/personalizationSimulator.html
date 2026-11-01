@@ -33,6 +33,18 @@
                         variant="label-stacked">
                     </lightning-input>
                 </div>
+
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                    <lightning-combobox
+                        label="Decisioning endpoint"
+                        value={authMode}
+                        options={authModeOptions}
+                        onchange={handleAuthModeChange}
+                        variant="label-stacked"
+                        data-id="auth-mode">
+                    </lightning-combobox>
+                    <p class="slds-text-body_small slds-text-color_weak slds-m-top_xx-small" data-id="requires-auth">{requiresAuthLabel}</p>
+                </div>
             </div>
 
             <!-- ── Global error ──────────────────────────────── -->
@@ -112,6 +124,52 @@
                 </div>
 
             </div>
+        </div>
+
+        <!-- ── Decision context (custom key/value pairs) ─────────── -->
+        <div class="slds-m-horizontal_medium slds-m-bottom_medium">
+            <p class="slds-text-title_caps slds-text-color_weak slds-m-bottom_x-small">Decision Context</p>
+            <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_x-small">
+                Extra keys sent in the request context, for example a product ID used by a recommender's dynamic context filter.
+                A value in JSON form (object or array) is sent as JSON.
+            </p>
+            <template for:each={contextRows} for:item="row">
+                <div key={row.id} class="slds-grid slds-gutters_x-small slds-m-bottom_x-small context-row">
+                    <div class="slds-col slds-size_1-of-3">
+                        <lightning-input value={row.key} data-id={row.id} data-field="key"
+                            onchange={handleContextRowChange} placeholder="Key, e.g. productId" variant="label-hidden">
+                        </lightning-input>
+                    </div>
+                    <div class="slds-col">
+                        <lightning-input value={row.value} data-id={row.id} data-field="value"
+                            onchange={handleContextRowChange} placeholder="Value" variant="label-hidden">
+                        </lightning-input>
+                    </div>
+                    <div class="slds-col slds-no-flex slds-align-middle">
+                        <lightning-button-icon icon-name="utility:delete" data-id={row.id}
+                            onclick={handleRemoveContextRow} variant="bare" size="small" alternative-text="Remove key">
+                        </lightning-button-icon>
+                    </div>
+                </div>
+            </template>
+            <template if:true={ignoredContextKeys}>
+                <p class="slds-text-body_small slds-text-color_error slds-m-bottom_x-small">{ignoredContextKeys}</p>
+            </template>
+            <lightning-button label="Add key" icon-name="utility:add" onclick={handleAddContextRow}
+                variant="neutral" data-id="add-context-row">
+            </lightning-button>
+        </div>
+
+        <!-- ── Experience template (optional preview) ───────────── -->
+        <div class="slds-m-horizontal_medium slds-m-bottom_medium">
+            <lightning-textarea
+                label="Experience template (optional)"
+                value={templateText}
+                onchange={handleTemplateChange}
+                placeholder="Paste the point's Handlebars template, e.g. <h2>{{attributes.header}}</h2>{{#each data}}<p>{{name}}</p>{{/each}}"
+                field-level-help="Each result gets a Preview view that renders the response through this template in a sandboxed frame (no scripts). Supports variables, {{{raw}}}, #if, #unless, #each, #with and else."
+                class="template-input">
+            </lightning-textarea>
         </div>
 
         <!-- ── Visitor Entries ────────────────────────────────── -->
@@ -208,7 +266,7 @@
         <template if:true={hasResults}>
             <div class="slds-m-around_medium">
                 <lightning-tabset>
-                    <template for:each={entries} for:item="entry">
+                    <template for:each={entriesView} for:item="entry">
                         <lightning-tab key={entry.key} label={entry.tabLabel} value={entry.key}>
 
                             <!-- Loading -->
@@ -232,6 +290,18 @@
                                     </lightning-icon>
                                     {entry.error}
                                 </div>
+                                <template if:true={entry.mode}>
+                                    <p class="slds-m-horizontal_medium slds-text-body_small slds-text-color_weak">
+                                        <span class={entry.modeBadgeClass}>{entry.mode}</span> {entry.modeDetail}
+                                    </p>
+                                </template>
+                                <template if:true={entry.hasModeNotes}>
+                                    <ul class="slds-m-horizontal_medium slds-text-body_small slds-text-color_weak">
+                                        <template for:each={entry.modeNotes} for:item="note">
+                                            <li key={note}>{note}</li>
+                                        </template>
+                                    </ul>
+                                </template>
                             </template>
 
                             <!-- Result -->
@@ -252,6 +322,78 @@
                                             Personalization ID: {entry.personalizationId}
                                         </span>
                                     </div>
+                                    <div class="slds-col slds-no-flex slds-m-left_small">
+                                        <span class={entry.modeBadgeClass} title={entry.modeDetail} data-id="mode-badge">{entry.mode}</span>
+                                    </div>
+                                </div>
+                                <p class="slds-text-body_small slds-text-color_weak slds-m-bottom_x-small" data-id="mode-detail">{entry.modeDetail}</p>
+                                <template if:true={entry.hasModeNotes}>
+                                    <ul class="slds-text-body_small slds-text-color_weak slds-m-bottom_x-small">
+                                        <template for:each={entry.modeNotes} for:item="note">
+                                            <li key={note}>{note}</li>
+                                        </template>
+                                    </ul>
+                                </template>
+
+                                <!-- What answered -->
+                                <div class="slds-box slds-m-bottom_medium answered-block">
+                                    <div class="slds-grid" style="align-items: center;">
+                                        <p class="slds-col slds-text-title_caps">What answered</p>
+                                        <div class="slds-col slds-no-flex">
+                                            <lightning-button label="Look up in logs" icon-name="utility:search"
+                                                data-key={entry.key} onclick={handleLogLookup}
+                                                variant="neutral" disabled={entry.logLoading} data-id="log-lookup">
+                                            </lightning-button>
+                                        </div>
+                                    </div>
+                                    <template if:true={entry.hasAnswerInfo}>
+                                        <template for:each={entry.answerInfo} for:item="info">
+                                            <div key={info.path} class="slds-grid slds-gutters_x-small">
+                                                <span class="slds-col slds-no-flex slds-text-body_small slds-text-color_weak attr-key">{info.path}</span>
+                                                <span class="slds-col slds-text-body_small">{info.value}</span>
+                                            </div>
+                                        </template>
+                                    </template>
+                                    <template if:false={entry.hasAnswerInfo}>
+                                        <p class="slds-text-body_small slds-text-color_weak">
+                                            The response does not name the decision or cohort. Look up in logs reads the Personalization Log
+                                            and A/B Experiment Log by request ID; logs arrive several minutes after the request.
+                                        </p>
+                                    </template>
+                                    <template if:true={entry.logLoading}>
+                                        <lightning-spinner alternative-text="Reading logs..." size="small"></lightning-spinner>
+                                    </template>
+                                    <template if:true={entry.logMessage}>
+                                        <p class="slds-text-body_small slds-m-top_x-small" data-id="log-message">{entry.logMessage}</p>
+                                    </template>
+                                    <template if:true={entry.hasLogEntries}>
+                                        <table class="slds-table slds-table_cell-buffer slds-table_bordered slds-m-top_x-small" data-id="log-table">
+                                            <thead>
+                                                <tr>
+                                                    <th scope="col">Decision</th>
+                                                    <th scope="col">Personalizer</th>
+                                                    <th scope="col">Experiment</th>
+                                                    <th scope="col">Cohort</th>
+                                                    <th scope="col">Treatment</th>
+                                                    <th scope="col">Status</th>
+                                                    <th scope="col">Time</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template for:each={entry.logEntries} for:item="log">
+                                                    <tr key={log.id}>
+                                                        <td>{log.decision}</td>
+                                                        <td>{log.personalizer}</td>
+                                                        <td>{log.experiment}</td>
+                                                        <td>{log.cohort}</td>
+                                                        <td>{log.treatment}</td>
+                                                        <td>{log.statusCode}</td>
+                                                        <td>{log.requestDateTime}</td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </template>
                                 </div>
 
                                 <!-- Attributes -->
@@ -295,6 +437,13 @@
                                                 onclick={handleTabToggle}>
                                                 Data Graph
                                             </button>
+                                            <template if:true={hasTemplate}>
+                                                <button class="slds-button slds-button_neutral"
+                                                    data-key={entry.key} data-view="preview"
+                                                    onclick={handleTabToggle}>
+                                                    Preview
+                                                </button>
+                                            </template>
                                         </div>
                                     </div>
                                     <div class="slds-col slds-no-flex">
@@ -363,6 +512,23 @@
                                     <div class="json-wrapper">
                                         <pre class="json-block">{entry.rawJson}</pre>
                                     </div>
+                                </template>
+
+                                <!-- Template Preview View -->
+                                <template if:true={entry.showPreview}>
+                                    <template if:true={entry.previewError}>
+                                        <p class="slds-text-color_error" data-id="preview-error">{entry.previewError}</p>
+                                    </template>
+                                    <template if:true={entry.previewSrc}>
+                                        <iframe class="template-preview" sandbox="" src={entry.previewSrc}
+                                            title="Experience template preview" data-id="preview-frame"></iframe>
+                                        <details class="slds-m-top_x-small">
+                                            <summary class="slds-text-body_small">Rendered HTML</summary>
+                                            <div class="json-wrapper">
+                                                <pre class="json-block" data-id="preview-html">{entry.previewHtml}</pre>
+                                            </div>
+                                        </details>
+                                    </template>
                                 </template>
 
                                 <!-- Data Graph View -->
@@ -444,6 +610,53 @@
                         </lightning-tab>
                     </template>
                 </lightning-tabset>
+            </div>
+        </template>
+
+        <!-- ── Compare two visitors ───────────────────────────── -->
+        <template if:true={canCompare}>
+            <div class="slds-m-around_medium compare-block" data-id="compare">
+                <p class="slds-text-title_caps slds-text-color_weak slds-m-bottom_x-small">Compare</p>
+                <div class="slds-grid slds-gutters slds-wrap" style="align-items: flex-end;">
+                    <div class="slds-col slds-size_1-of-1 slds-medium-size_2-of-5">
+                        <lightning-combobox label="Visitor A" value={compareA} options={compareOptions}
+                            onchange={handleCompareAChange} variant="label-stacked" data-id="compare-a">
+                        </lightning-combobox>
+                    </div>
+                    <div class="slds-col slds-size_1-of-1 slds-medium-size_2-of-5">
+                        <lightning-combobox label="Visitor B" value={compareB} options={compareOptions}
+                            onchange={handleCompareBChange} variant="label-stacked" data-id="compare-b">
+                        </lightning-combobox>
+                    </div>
+                    <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-5">
+                        <lightning-input type="checkbox" label="Only differences" checked={onlyDiffs}
+                            onchange={handleOnlyDiffsChange}>
+                        </lightning-input>
+                    </div>
+                </div>
+                <p class="slds-text-body_small slds-m-vertical_x-small" data-id="compare-summary">{compareSummary}</p>
+                <template if:true={hasCompareRows}>
+                    <div class="result-table-wrapper">
+                        <table class="slds-table slds-table_cell-buffer slds-table_bordered" data-id="compare-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Field</th>
+                                    <th scope="col">{compareLabelA}</th>
+                                    <th scope="col">{compareLabelB}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={compareRows} for:item="row">
+                                    <tr key={row.path} class={row.rowClass}>
+                                        <td class="compare-path">{row.path}</td>
+                                        <td>{row.a}</td>
+                                        <td>{row.b}</td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
             </div>
         </template>
 
