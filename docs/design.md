@@ -22,6 +22,39 @@ LWC on Personalization Point record pages. Simulates the decisioning API for up 
 - `SimulatorConfig` — tseBaseUrl, dataspace, autoDetected, orgBaseUrl
 - `SimulateResult` — success, responseJson, errorMessage, httpStatus
 
+Added 2026-11-01 (branch `feat/simulator-upgrades`):
+
+| Method | Type | Purpose |
+|--------|------|---------|
+| `getPointInfo(recordId)` | `@AuraEnabled(cacheable=true)` | `DeveloperName` and `IsAuthenticationRequired` (null if the field is missing) |
+| `runDecision(requestJson)` | `@AuraEnabled` | `{ pointName, tseBaseUrl, authMode, requiresAuth, context }` to `PersonalizationDecisionService.decide`; returns `DecisionResult` (success, httpStatus, responseJson, errorMessage, mode, modeDetail, notes) |
+| `lookupDecisionLog(requestId)` | `@AuraEnabled` | `PersonalizationLogLookup.lookup`: decision, personalizer, experiment, cohort for one request |
+
+`simulate(10 params)` is kept unchanged for compatibility; the LWC now uses `runDecision`.
+
+### Apex: `PersonalizationDecisionService`
+
+- `authMode`: `auto` (default), `authenticated`, `unauthenticated`.
+- Auto: if the point requires authentication, authenticated; else unauthenticated, and on HTTP 401/403 retry authenticated (the org default for point authentication is not readable through the API).
+- Authenticated path, in order:
+  1. `Invocable.Action.createStandardAction('getPersonalizationDecisions')` with `persnlPointName` and `persnlDecisionInputRepresentation = { context }`. Output: a single output parameter is unwrapped and parsed if it is a JSON string.
+  2. Token exchange: POST `callout:Personalization_DC_Token/services/a360/token` (`grant_type=urn:salesforce:grant-type:external:cdp`, `subject_token={!$Credential.OAuthToken}`), then POST `{TSE}/personalization/authenticated/decisions` with `Authorization: Bearer <access_token>`.
+- Adapters `ActionInvoker` and `TokenProvider` are interfaces, swapped in tests.
+
+### Apex: `PersonalizationLogLookup`
+
+- `ssot__PersonalizationLog__dlm` by `ssot__PersonalizationRequestId__c` (decision, personalizer, point, status, time).
+- `ssot__AbnExperimentLog__dlm` by `ssot__Requestid__c` (experiment, cohort, treatment), joined on `ssot__PersonalizationId__c`.
+- Names from SOQL on PersonalizationPoint, PersonalizationDecision, PersonalizationRecommender, AbnExperiment, AbnExperimentCohort (IsControl), matched on the first 15 characters of the ID.
+- Logs arrive minutes after a request, so the LWC calls this on a button.
+
+### LWC helpers: `simulatorUtils.js`
+
+- `buildContext`, `contextRowsToMap`: request context from the standard fields plus custom rows (JSON-looking values sent as JSON; `individualId` and `dataspace` rows ignored).
+- `extractDecisionInfo`: fields whose names mention decision, experiment, cohort, personalizer, variant, treatment or diagnostic, outside `data` rows.
+- `diffResponses`, `flattenJson`: compare two responses by leaf path; `requestId`, `personalizationId` and similar per-call IDs are marked volatile.
+- `renderTemplate`: small Handlebars subset (variables, raw, #if, #unless, #each, #with, else, @index/@key/@first/@last, ../, this). `previewDocument` adds a CSP (no scripts, images only); `previewDataUrl` because LWC disallows `srcdoc`. The iframe has `sandbox=""`.
+
 ---
 
 ## Data Graph Feature Design

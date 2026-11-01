@@ -107,3 +107,13 @@ Expected: all tests pass. Tests wrap Data Cloud SOQL in try/catch since `Persona
 | `PersonalizationPoint not found` | Wrong record context | Ensure component is on a PersonalizationPoint record page |
 | `Insufficient Privileges` | Permission set not assigned | Step 4 above |
 | Component not in App Builder | API version or object mismatch | Verify `js-meta.xml` target object is `PersonalizationPoint` |
+
+## Authenticated decisioning (2026-11-01)
+
+Only needed for points with Requires authentication on, and only if the standard invocable action `getPersonalizationDecisions` does not answer in your org. Create the legacy Named Credential `Personalization_DC_Token` (steps in README, Step 7b): URL is the org's My Domain, OAuth 2.0 through a Salesforce Auth Provider, scope `api cdp_api refresh_token`, Allow Merge Fields in HTTP Body on. No extra Remote Site Setting: the TSE remote site covers `/personalization/authenticated/decisions`.
+
+## Tests
+
+- `npm install && npm test` (LWC Jest).
+- `sf apex run test --target-org <alias> --class-names PersonalizationSimulatorControllerTest,PersonalizationDecisionServiceTest,PersonalizationLogLookupTest --code-coverage --result-format human`
+
