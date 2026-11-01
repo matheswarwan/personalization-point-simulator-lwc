@@ -97,4 +97,51 @@ private class PersonalizationSimulatorControllerTest {
         }
         Test.stopTest();
     }
+
+    // ─── Test: getPointInfo ───────────────────────────────────────
+    // PersonalizationPoint needs Data Cloud; without a record the method throws "not found".
+    @isTest
+    static void testGetPointInfoNotFound() {
+        try {
+            PersonalizationSimulatorController.getPointInfo('9ppAA0000000001AAA');
+            System.assert(false, 'Expected not found');
+        } catch (Exception e) {
+            System.assert(e.getMessage() != null);
+        }
+    }
+
+    // ─── Test: runDecision ────────────────────────────────────────
+    @isTest
+    static void testRunDecisionUnauthenticated() {
+        Test.setMock(HttpCalloutMock.class, new DecisionsMock(200, MOCK_RESPONSE));
+        String req = JSON.serialize(new Map<String, Object>{
+            'pointName'    => 'PDP_Recs',
+            'tseBaseUrl'   => 'https://m-test.c360a.salesforce.com',
+            'authMode'     => 'auto',
+            'requiresAuth' => false,
+            'context'      => new Map<String, Object>{ 'individualId' => 'd0cf39a5824a008d', 'productId' => 'SKU-1' }
+        });
+        Test.startTest();
+        PersonalizationDecisionService.DecisionResult r = PersonalizationSimulatorController.runDecision(req);
+        Test.stopTest();
+        System.assertEquals(200, r.httpStatus);
+        System.assertEquals('Unauthenticated', r.mode);
+    }
+
+    @isTest
+    static void testRunDecisionBadInput() {
+        Boolean threw = false;
+        try { PersonalizationSimulatorController.runDecision('not json'); } catch (AuraHandledException e) { threw = true; }
+        System.assert(threw, 'invalid JSON should throw');
+        threw = false;
+        try { PersonalizationSimulatorController.runDecision('{"pointName":"PP","context":"x"}'); } catch (AuraHandledException e) { threw = true; }
+        System.assert(threw, 'missing individualId should throw');
+    }
+
+    // ─── Test: lookupDecisionLog ──────────────────────────────────
+    @isTest
+    static void testLookupDecisionLog() {
+        PersonalizationLogLookup.LookupResult r = PersonalizationSimulatorController.lookupDecisionLog('');
+        System.assertEquals(false, r.found);
+    }
 }

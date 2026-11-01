@@ -154,6 +154,67 @@ public with sharing class PersonalizationSimulatorController {
         }
     }
 
+    // ─── Point info ───────────────────────────────────────────────
+    public class PointInfo {
+        @AuraEnabled public String  apiName;
+        @AuraEnabled public Boolean requiresAuth; // null when the field is not available
+    }
+
+    // IsAuthenticationRequired checked on PersonalizationPoint (API v66.0). Older API versions
+    // may not have it, so a failing query falls back to the name only.
+    @AuraEnabled(cacheable=true)
+    public static PointInfo getPointInfo(String recordId) {
+        PointInfo info = new PointInfo();
+        List<SObject> records;
+        try {
+            records = Database.query(
+                'SELECT Id, DeveloperName, IsAuthenticationRequired FROM PersonalizationPoint WHERE Id = :recordId LIMIT 1'
+            );
+            if (!records.isEmpty()) info.requiresAuth = (Boolean) records[0].get('IsAuthenticationRequired');
+        } catch (Exception e) {
+            records = Database.query('SELECT Id, DeveloperName FROM PersonalizationPoint WHERE Id = :recordId LIMIT 1');
+        }
+        if (records.isEmpty()) {
+            throw new AuraHandledException('Personalization Point not found for Id: ' + recordId);
+        }
+        info.apiName = (String) records[0].get('DeveloperName');
+        return info;
+    }
+
+    // ─── Run decision (auth modes, custom context) ────────────────
+    // requestJson: { pointName, tseBaseUrl, authMode: auto|authenticated|unauthenticated,
+    //                requiresAuth, context: { individualId, dataspace, ...any keys } }
+    @AuraEnabled
+    public static PersonalizationDecisionService.DecisionResult runDecision(String requestJson) {
+        Map<String, Object> req;
+        try {
+            req = (Map<String, Object>) JSON.deserializeUntyped(requestJson);
+        } catch (Exception e) {
+            throw new AuraHandledException('Request is not valid JSON: ' + e.getMessage());
+        }
+        Object ctx = req.get('context');
+        Map<String, Object> context = ctx instanceof Map<String, Object>
+            ? (Map<String, Object>) ctx
+            : new Map<String, Object>();
+        try {
+            return PersonalizationDecisionService.decide(
+                (String) req.get('pointName'),
+                (String) req.get('tseBaseUrl'),
+                context,
+                (String) req.get('authMode'),
+                (Boolean) req.get('requiresAuth')
+            );
+        } catch (PersonalizationDecisionService.DecisionException e) {
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+
+    // ─── Decision log lookup ──────────────────────────────────────
+    @AuraEnabled
+    public static PersonalizationLogLookup.LookupResult lookupDecisionLog(String requestId) {
+        return PersonalizationLogLookup.lookup(requestId);
+    }
+
     // ─── Simulate ─────────────────────────────────────────────────
     // tseBaseUrl is passed explicitly so the user's in-place edit is always used
     @AuraEnabled
