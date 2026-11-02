@@ -6,6 +6,7 @@ public with sharing class PersonalizationSimulatorController {
         @AuraEnabled public String dataspace;
         @AuraEnabled public Boolean autoDetected; // true = came from ConnectApi
         @AuraEnabled public String orgBaseUrl;    // My Domain URL for Data Graph self-callout
+        @AuraEnabled public String apiVersion;    // REST API version for the org's own API calls, e.g. 66.0
     }
 
     // ─── Response DTO ─────────────────────────────────────────────
@@ -14,6 +15,21 @@ public with sharing class PersonalizationSimulatorController {
         @AuraEnabled public String responseJson;
         @AuraEnabled public String errorMessage;
         @AuraEnabled public Integer httpStatus;
+    }
+
+    // ─── API version ──────────────────────────────────────────────
+    // The REST API version for calls to the org's own API (data graph lookup). Set per org in
+    // Personalization_Config__mdt.API_Version__c, and per user in the component's settings.
+    public static final String DEFAULT_API_VERSION = '66.0';
+
+    /** '66', 'v66.0' or '66.0' -> '66.0'; blank -> the default; anything else throws. */
+    public static String normalizeApiVersion(String value) {
+        if (String.isBlank(value)) return DEFAULT_API_VERSION;
+        String v = value.trim().removeStartIgnoreCase('v');
+        if (!Pattern.matches('\\d{2,3}(\\.0)?', v)) {
+            throw new AuraHandledException('API version must look like 66.0 (got "' + value + '").');
+        }
+        return v.contains('.') ? v : v + '.0';
     }
 
     // ─── Get Config ───────────────────────────────────────────────
@@ -25,7 +41,7 @@ public with sharing class PersonalizationSimulatorController {
 
         try {
             Personalization_Config__mdt config = [
-                SELECT TSE_Base_URL__c, Dataspace__c, Org_Base_URL__c
+                SELECT TSE_Base_URL__c, Dataspace__c, Org_Base_URL__c, API_Version__c
                 FROM Personalization_Config__mdt
                 WHERE Is_Active__c = true
                 LIMIT 1
@@ -33,11 +49,13 @@ public with sharing class PersonalizationSimulatorController {
             result.tseBaseUrl   = config.TSE_Base_URL__c;
             result.dataspace    = config.Dataspace__c;
             result.orgBaseUrl   = config.Org_Base_URL__c;
+            result.apiVersion   = normalizeApiVersion(config.API_Version__c);
             result.autoDetected = false;
         } catch (Exception e) {
             result.tseBaseUrl   = '';
             result.dataspace    = 'default';
             result.orgBaseUrl   = '';
+            result.apiVersion   = DEFAULT_API_VERSION;
             result.autoDetected = false;
         }
 
@@ -95,7 +113,7 @@ public with sharing class PersonalizationSimulatorController {
     // 3. Queries the Data Graph's values DMO directly via SOQL
     //    (avoids ConnectApi / HTTP callout org-edition requirements)
     @AuraEnabled
-    public static String getDataGraphValues(String recordId, String individualId, String dataspace, String orgBaseUrl) {
+    public static String getDataGraphValues(String recordId, String individualId, String dataspace, String orgBaseUrl, String apiVersion) {
         if (String.isBlank(orgBaseUrl)) {
             throw new AuraHandledException(
                 'Org Base URL is not configured. Add your org\'s My Domain URL (e.g. https://myorg.my.salesforce.com) to Personalization_Config__mdt and the Org_Self_Callout Remote Site Setting.'
@@ -124,10 +142,10 @@ public with sharing class PersonalizationSimulatorController {
         String dataGraphApiName = (String) dgRecs[0].get('DataGraphApiName');
 
         // Step 3: call the Data Cloud REST API on this org
-        // Endpoint: GET /services/data/v62.0/c360a/dataGraphValues/{dataspace}/{dataGraphApiName}/{individualId}
+        // Endpoint: GET /services/data/v{apiVersion}/c360a/dataGraphValues/{dataspace}/{dataGraphApiName}/{individualId}
         String ns       = String.isBlank(dataspace) ? 'default' : dataspace;
         String endpoint = orgBaseUrl.removeEnd('/')
-            + '/services/data/v62.0/c360a/dataGraphValues/'
+            + '/services/data/v' + normalizeApiVersion(apiVersion) + '/c360a/dataGraphValues/'
             + EncodingUtil.urlEncode(ns, 'UTF-8') + '/'
             + EncodingUtil.urlEncode(dataGraphApiName, 'UTF-8') + '/'
             + EncodingUtil.urlEncode(individualId, 'UTF-8');

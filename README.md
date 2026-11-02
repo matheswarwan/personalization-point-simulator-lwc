@@ -171,6 +171,23 @@ If your Personalization Point returns image URLs from external domains (e.g. Her
 | `TSE_Base_URL__c` | TSE endpoint — **no trailing slash** | `https://m-xxxx.c360a.salesforce.com` |
 | `Dataspace__c` | Personalization dataspace name | `default` |
 | `Is_Active__c` | Mark the active config record | `true` |
+| `Org_Base_URL__c` | This org's My Domain URL, for the data graph lookup | `https://myorg.my.salesforce.com` |
+| `API_Version__c` | Salesforce REST API version for calls to this org's API (data graph lookup). Blank means 66.0 | `66.0` |
+
+### API version
+
+There are two API versions, and both can be changed:
+
+- **At run time:** `API_Version__c` in the Personalization Config custom metadata sets the default for everyone. Each user can override it in the component's **API version** field (kept in the browser, like the TSE URL). Values like `66`, `v66.0` and `66.0` are accepted; anything else is refused.
+- **At deploy time:** the metadata files declare `<apiVersion>66.0</apiVersion>` and `sfdx-project.json` has `"sourceApiVersion": "66.0"`. To deploy at another version, change them in one go before deploying, for example:
+
+  ```bash
+  NEW=65.0
+  sed -i "s#<apiVersion>[0-9.]*</apiVersion>#<apiVersion>$NEW</apiVersion>#" force-app/main/default/classes/*.cls-meta.xml force-app/main/default/lwc/*/*.js-meta.xml
+  sed -i "s#\"sourceApiVersion\": \"[0-9.]*\"#\"sourceApiVersion\": \"$NEW\"#" sfdx-project.json
+  ```
+
+  Authenticated decisioning uses ConnectApi Personalization types, so keep the classes at a version that has them (66.0 was checked).
 
 ---
 

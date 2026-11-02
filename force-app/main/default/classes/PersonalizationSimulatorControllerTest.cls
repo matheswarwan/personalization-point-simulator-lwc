@@ -46,7 +46,7 @@ private class PersonalizationSimulatorControllerTest {
     static void testGetDataGraphValues() {
         try {
             String result = PersonalizationSimulatorController.getDataGraphValues(
-                'fakeRecordId', 'fakeIndividualId', 'default', 'https://fake.my.salesforce.com'
+                'fakeRecordId', 'fakeIndividualId', 'default', 'https://fake.my.salesforce.com', '66.0'
             );
             System.assertNotEquals(null, result);
         } catch (Exception e) {
@@ -170,7 +170,7 @@ private class PersonalizationSimulatorControllerTest {
         Test.setMock(HttpCalloutMock.class, new DecisionsMock(200, '{"data":[{"json_blob__c":"{}"}]}'));
         Test.startTest();
         try {
-            String body = PersonalizationSimulatorController.getDataGraphValues(pointId, 'ind-1', 'default', 'https://example.my.salesforce.com');
+            String body = PersonalizationSimulatorController.getDataGraphValues(pointId, 'ind-1', 'default', 'https://example.my.salesforce.com', '66.0');
             System.assert(body.contains('json_blob__c'));
         } catch (AuraHandledException e) {
             // A point with no profile data graph says so
@@ -186,7 +186,7 @@ private class PersonalizationSimulatorControllerTest {
         Test.setMock(HttpCalloutMock.class, new DecisionsMock(404, '[{"errorCode":"NOT_FOUND"}]'));
         Boolean threw = false;
         Test.startTest();
-        try { PersonalizationSimulatorController.getDataGraphValues(pointId, 'ind-1', 'default', 'https://example.my.salesforce.com'); } catch (AuraHandledException e) { threw = true; }
+        try { PersonalizationSimulatorController.getDataGraphValues(pointId, 'ind-1', 'default', 'https://example.my.salesforce.com', '66.0'); } catch (AuraHandledException e) { threw = true; }
         Test.stopTest();
         System.assert(threw, 'HTTP 404 should throw');
     }
@@ -201,7 +201,7 @@ private class PersonalizationSimulatorControllerTest {
     @isTest
     static void testDataGraphNeedsOrgUrl() {
         Boolean threw = false;
-        try { PersonalizationSimulatorController.getDataGraphValues('9ppAA0000000001AAA', 'ind-1', 'default', ''); } catch (AuraHandledException e) { threw = true; }
+        try { PersonalizationSimulatorController.getDataGraphValues('9ppAA0000000001AAA', 'ind-1', 'default', '', null); } catch (AuraHandledException e) { threw = true; }
         System.assert(threw, 'blank org URL should throw');
     }
 
@@ -214,5 +214,16 @@ private class PersonalizationSimulatorControllerTest {
         } catch (Exception e) {
             System.assert(e.getMessage() != null);
         }
+    }
+
+    @isTest
+    static void testNormalizeApiVersion() {
+        System.assertEquals('66.0', PersonalizationSimulatorController.normalizeApiVersion(null));
+        System.assertEquals('64.0', PersonalizationSimulatorController.normalizeApiVersion('64'));
+        System.assertEquals('65.0', PersonalizationSimulatorController.normalizeApiVersion(' v65.0 '));
+        Boolean threw = false;
+        try { PersonalizationSimulatorController.normalizeApiVersion('66.0/../x'); } catch (AuraHandledException e) { threw = true; }
+        System.assert(threw, 'odd versions are refused');
+        System.assertNotEquals(null, PersonalizationSimulatorController.getConfig().apiVersion);
     }
 }

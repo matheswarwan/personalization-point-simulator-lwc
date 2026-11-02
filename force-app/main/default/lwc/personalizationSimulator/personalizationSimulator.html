@@ -27,6 +27,17 @@
 
                 <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
                     <lightning-input
+                        label="API version"
+                        value={apiVersion}
+                        onchange={handleApiVersionChange}
+                        placeholder="66.0"
+                        field-level-help="Salesforce REST API version for calls to this org's API (data graph lookup). Default from Personalization Config."
+                        variant="label-stacked">
+                    </lightning-input>
+                </div>
+
+                <div class="slds-col slds-size_1-of-1 slds-medium-size_1-of-3">
+                    <lightning-input
                         label="Personalization Point"
                         value={ppApiName}
                         disabled

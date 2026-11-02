@@ -210,14 +210,10 @@ private class PersonalizationDecisionServiceTest {
 
     @isTest
     static void standardActionInvokerFailsCleanly() {
-        // The standard action may not exist in the test context; either way invoke must
-        // return outputs or throw, and decide() must not fail.
-        try {
-            Map<String, Object> out = new PersonalizationDecisionService.StandardActionInvoker().invoke('PP', ctx());
-            System.assertNotEquals(null, out);
-        } catch (Exception e) {
-            System.assertNotEquals(null, e.getMessage());
-        }
+        // The real action cannot run in Apex tests: invoke says so instead of failing inside Salesforce.
+        Boolean threw = false;
+        try { new PersonalizationDecisionService.StandardActionInvoker().invoke('PP', ctx()); } catch (PersonalizationDecisionService.DecisionException e) { threw = true; }
+        System.assert(threw, 'invoke refuses to run in tests');
     }
 
     @isTest

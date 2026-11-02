@@ -9,6 +9,10 @@
         <value xsi:type="xsd:string"></value>
     </values>
     <values>
+        <field>API_Version__c</field>
+        <value xsi:type="xsd:string">66.0</value>
+    </values>
+    <values>
         <field>Dataspace__c</field>
         <value xsi:type="xsd:string">default</value>
     </values>

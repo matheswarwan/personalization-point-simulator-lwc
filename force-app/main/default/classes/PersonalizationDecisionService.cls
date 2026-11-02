@@ -39,14 +39,28 @@ public with sharing class PersonalizationDecisionService {
 
     public class DecisionException extends Exception {}
 
-    // ASSUMPTION: input names from the invocable action reference: persnlPointName and
-    // persnlDecisionInputRepresentation (with the request context under "context").
-    // Whether a Map is accepted for the representation input is not verified.
+    // The standard action's inputs, checked on the demo org (REST describe and the Apex compiler,
+    // API v66.0, 2026-11-02): PersnlDecisionInputRepresentation (ConnectApi type: context with
+    // individualId, dataspace, anchorId, anchorType; personalizationPoints with persnlPointName,
+    // persnlPointId, decisionId) and invocationType (default REST). The Apex context type has no
+    // field for other keys, so custom context keys cannot go through this path.
     public class StandardActionInvoker implements ActionInvoker {
         public Map<String, Object> invoke(String pointName, Map<String, Object> context) {
+            // The action fails with an uncatchable internal error inside Apex tests, so tests stop here.
+            if (Test.isRunningTest()) throw new DecisionException('The getPersonalizationDecisions action does not run in Apex tests.');
+            ConnectApi.PersnlDecisionContextInputRepresentation ctx = new ConnectApi.PersnlDecisionContextInputRepresentation();
+            ctx.individualId = (String) context.get('individualId');
+            ctx.dataspace = context.containsKey('dataspace') ? (String) context.get('dataspace') : 'default';
+            if (context.get('anchorId') != null) ctx.anchorId = String.valueOf(context.get('anchorId'));
+            if (context.get('anchorType') != null) ctx.anchorType = String.valueOf(context.get('anchorType'));
+            ConnectApi.PersnlPointInputRepresentation point = new ConnectApi.PersnlPointInputRepresentation();
+            point.persnlPointName = pointName;
+            ConnectApi.PersnlDecisionInputRepresentation input = new ConnectApi.PersnlDecisionInputRepresentation();
+            input.context = ctx;
+            input.personalizationPoints = new List<ConnectApi.PersnlPointInputRepresentation>{ point };
+
             Invocable.Action action = Invocable.Action.createStandardAction('getPersonalizationDecisions');
-            action.setInvocationParameter('persnlPointName', pointName);
-            action.setInvocationParameter('persnlDecisionInputRepresentation', new Map<String, Object>{ 'context' => context });
+            action.setInvocationParameter('PersnlDecisionInputRepresentation', input);
             List<Invocable.Action.Result> results = action.invoke();
             if (results == null || results.isEmpty()) {
                 throw new DecisionException('The getPersonalizationDecisions action returned nothing.');
@@ -59,7 +73,13 @@ public with sharing class PersonalizationDecisionService {
                 }
                 throw new DecisionException(String.join(messages, '; '));
             }
-            return r.getOutputParameters();
+            // ConnectApi output types serialize to JSON, which keeps the caller independent of them.
+            Map<String, Object> out = new Map<String, Object>();
+            for (String key : r.getOutputParameters().keySet()) {
+                Object v = r.getOutputParameters().get(key);
+                out.put(key, v == null ? null : JSON.deserializeUntyped(JSON.serialize(v)));
+            }
+            return out;
         }
     }
 

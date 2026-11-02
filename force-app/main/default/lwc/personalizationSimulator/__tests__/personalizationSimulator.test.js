@@ -6,6 +6,7 @@ import getPersonalizationPointApiName from '@salesforce/apex/PersonalizationSimu
 import getRecentDeviceIds from '@salesforce/apex/PersonalizationSimulatorController.getRecentDeviceIds';
 import runDecision from '@salesforce/apex/PersonalizationSimulatorController.runDecision';
 import lookupDecisionLog from '@salesforce/apex/PersonalizationSimulatorController.lookupDecisionLog';
+import getDataGraphValues from '@salesforce/apex/PersonalizationSimulatorController.getDataGraphValues';
 
 jest.mock('@salesforce/apex/PersonalizationSimulatorController.getConfig', () => ({ default: jest.fn() }), { virtual: true });
 jest.mock('@salesforce/apex/PersonalizationSimulatorController.getPointInfo', () => ({ default: jest.fn() }), { virtual: true });
@@ -229,5 +230,27 @@ describe('c-personalization-simulator', () => {
         await flush();
         expect(runDecision).toHaveBeenCalled();
         expect(JSON.parse(runDecision.mock.calls[0][0].requestJson).authMode).toBe('authenticated');
+    });
+
+    it('uses the API version from config, lets the user change it, and keeps it', async () => {
+        getConfig.mockResolvedValue({ tseBaseUrl: 'https://tenant.example', dataspace: 'default', orgBaseUrl: 'https://org.example', apiVersion: '66.0' });
+        getPointInfo.mockResolvedValue({ apiName: 'Home_Hero', requiresAuth: false });
+        getRecentDeviceIds.mockResolvedValue([]);
+        getDataGraphValues.mockResolvedValue('{"data":[]}');
+        const el = createElement('c-personalization-simulator', { is: PersonalizationSimulator });
+        el.recordId = '9ppAA0000000001AAA';
+        document.body.appendChild(el);
+        await flush();
+        const input = $$(el, 'lightning-input').find((i) => i.label === 'API version');
+        expect(input.value).toBe('66.0');
+        typeInto(input, '65.0');
+        runDecision.mockResolvedValue({ success: true, httpStatus: 200, responseJson: RESPONSE('Shoe'), mode: 'Unauthenticated', modeDetail: '', notes: [] });
+        button(el, 'Simulate').click();
+        await flush();
+        await flush();
+        button(el, 'Lookup Profile').click();
+        await flush();
+        expect(getDataGraphValues).toHaveBeenCalledWith(expect.objectContaining({ apiVersion: '65.0', orgBaseUrl: 'https://org.example' }));
+        expect(JSON.parse(localStorage.getItem('p13n_sim_context')).apiVersion).toBe('65.0');
     });
 });
