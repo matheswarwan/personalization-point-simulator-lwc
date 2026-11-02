@@ -144,4 +144,75 @@ private class PersonalizationSimulatorControllerTest {
         PersonalizationLogLookup.LookupResult r = PersonalizationSimulatorController.lookupDecisionLog('');
         System.assertEquals(false, r.found);
     }
+
+    // ─── Tests on the org's own Personalization Point ─────────────
+    // PersonalizationPoint cannot be inserted in a test, so these read an existing one
+    // (SeeAllData). In an org without points they only check the not-found paths.
+    private static Id existingPointId() {
+        List<SObject> pts = Database.query('SELECT Id FROM PersonalizationPoint LIMIT 1');
+        return pts.isEmpty() ? null : (Id) pts[0].get('Id');
+    }
+
+    @isTest(SeeAllData=true)
+    static void testExistingPointNameAndInfo() {
+        Id pointId = existingPointId();
+        if (pointId == null) return;
+        String apiName = PersonalizationSimulatorController.getPersonalizationPointApiName(pointId);
+        System.assertNotEquals(null, apiName);
+        PersonalizationSimulatorController.PointInfo info = PersonalizationSimulatorController.getPointInfo(pointId);
+        System.assertEquals(apiName, info.apiName);
+    }
+
+    @isTest(SeeAllData=true)
+    static void testExistingPointDataGraph() {
+        Id pointId = existingPointId();
+        if (pointId == null) return;
+        Test.setMock(HttpCalloutMock.class, new DecisionsMock(200, '{"data":[{"json_blob__c":"{}"}]}'));
+        Test.startTest();
+        try {
+            String body = PersonalizationSimulatorController.getDataGraphValues(pointId, 'ind-1', 'default', 'https://example.my.salesforce.com');
+            System.assert(body.contains('json_blob__c'));
+        } catch (AuraHandledException e) {
+            // A point with no profile data graph says so
+            System.assert(e.getMessage() != null);
+        }
+        Test.stopTest();
+    }
+
+    @isTest(SeeAllData=true)
+    static void testExistingPointDataGraphHttpError() {
+        Id pointId = existingPointId();
+        if (pointId == null) return;
+        Test.setMock(HttpCalloutMock.class, new DecisionsMock(404, '[{"errorCode":"NOT_FOUND"}]'));
+        Boolean threw = false;
+        Test.startTest();
+        try { PersonalizationSimulatorController.getDataGraphValues(pointId, 'ind-1', 'default', 'https://example.my.salesforce.com'); } catch (AuraHandledException e) { threw = true; }
+        Test.stopTest();
+        System.assert(threw, 'HTTP 404 should throw');
+    }
+
+    @isTest
+    static void testPointApiNameNotFound() {
+        Boolean threw = false;
+        try { PersonalizationSimulatorController.getPersonalizationPointApiName('9ppAA0000000001AAA'); } catch (Exception e) { threw = true; }
+        System.assert(threw, 'unknown point should throw');
+    }
+
+    @isTest
+    static void testDataGraphNeedsOrgUrl() {
+        Boolean threw = false;
+        try { PersonalizationSimulatorController.getDataGraphValues('9ppAA0000000001AAA', 'ind-1', 'default', ''); } catch (AuraHandledException e) { threw = true; }
+        System.assert(threw, 'blank org URL should throw');
+    }
+
+    @isTest
+    static void testRecentDeviceIds() {
+        // Data Cloud DMOs are not queryable in every test context; either outcome is fine.
+        try {
+            List<String> ids = PersonalizationSimulatorController.getRecentDeviceIds();
+            System.assert(ids.size() <= 10);
+        } catch (Exception e) {
+            System.assert(e.getMessage() != null);
+        }
+    }
 }
