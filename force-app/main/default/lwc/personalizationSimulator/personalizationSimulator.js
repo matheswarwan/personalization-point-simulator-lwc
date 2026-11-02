@@ -2,8 +2,21 @@ import { LightningElement, api, track } from 'lwc';
 import getConfig from '@salesforce/apex/PersonalizationSimulatorController.getConfig';
 import getPersonalizationPointApiName from '@salesforce/apex/PersonalizationSimulatorController.getPersonalizationPointApiName';
 import getRecentDeviceIds from '@salesforce/apex/PersonalizationSimulatorController.getRecentDeviceIds';
-import simulate from '@salesforce/apex/PersonalizationSimulatorController.simulate';
 import getDataGraphValues from '@salesforce/apex/PersonalizationSimulatorController.getDataGraphValues';
+import getPointInfo from '@salesforce/apex/PersonalizationSimulatorController.getPointInfo';
+import runDecision from '@salesforce/apex/PersonalizationSimulatorController.runDecision';
+import lookupDecisionLog from '@salesforce/apex/PersonalizationSimulatorController.lookupDecisionLog';
+import {
+    buildContext, contextRowsToMap, extractDecisionInfo, diffResponses,
+    renderTemplate, templateData, previewDocument, previewDataUrl
+} from './simulatorUtils';
+
+const AUTH_MODES = [
+    { label: 'Auto (follow the point setting)', value: 'auto' },
+    { label: 'Authenticated', value: 'authenticated' },
+    { label: 'Unauthenticated', value: 'unauthenticated' }
+];
+const TEMPLATE_KEY = 'p13n_sim_template';
 
 // ── Utilities ────────────────────────────────────────────────────
 
@@ -60,8 +73,21 @@ function makeEntry(individualId, source, index) {
         dataGraphLoading: false,
         dataGraphResult:  null,
         dataGraphError:   null,
-        showDataGraph:    false
+        showDataGraph:    false,
+        showPreview:      false,
+        mode:             '',
+        modeDetail:       '',
+        modeNotes:        [],
+        answerInfo:       [],
+        logLoading:       false,
+        logEntries:       [],
+        logMessage:       ''
     };
+}
+
+let _rowCounter = 0;
+function makeRow(key, value) {
+    return { id: String(++_rowCounter), key: key || '', value: value || '' };
 }
 
 // ── Component ────────────────────────────────────────────────────
@@ -73,10 +99,19 @@ export default class PersonalizationSimulator extends LightningElement {
     @track tseBaseUrl   = '';
     @track dataspace    = 'default';
     @track orgBaseUrl   = '';
+    @track apiVersion   = '';
     @track autoDetected    = false;
     @track ppApiName       = '';
     @track recentIds       = [];
     @track globalError     = null;
+    @track requiresAuth    = null;   // the point's IsAuthenticationRequired; null = unknown
+    @track authMode        = 'auto';
+    @track contextRows     = [];
+    @track compareA        = '';
+    @track compareB        = '';
+    @track onlyDiffs       = true;
+    @track templateText    = '';
+    authModeOptions        = AUTH_MODES;
 
     // ── Request Context ──────────────────────────────────────────
     @track requestUrl      = '';
@@ -93,7 +128,7 @@ export default class PersonalizationSimulator extends LightningElement {
         this.requestTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
         this.restoreContext();
         this.loadConfig();
-        this.loadApiName();
+        this.loadPointInfo();
         this.loadRecentDeviceIds();
     }
 
@@ -103,10 +138,21 @@ export default class PersonalizationSimulator extends LightningElement {
             // Only use config URLs if localStorage didn't already restore them
             if (!this.tseBaseUrl)  this.tseBaseUrl  = config.tseBaseUrl  || '';
             if (!this.orgBaseUrl)  this.orgBaseUrl  = config.orgBaseUrl  || '';
+            if (!this.apiVersion)  this.apiVersion  = config.apiVersion  || '66.0';
             this.dataspace    = config.dataspace     || 'default';
             this.autoDetected = config.autoDetected  || false;
         } catch (e) {
             this.globalError = 'Failed to load config: ' + (e.body?.message || e.message);
+        }
+    }
+
+    async loadPointInfo() {
+        try {
+            const info = await getPointInfo({ recordId: this.recordId });
+            this.ppApiName = info.apiName;
+            this.requiresAuth = info.requiresAuth === undefined ? null : info.requiresAuth;
+        } catch (e) {
+            await this.loadApiName();
         }
     }
 
@@ -183,12 +229,15 @@ export default class PersonalizationSimulator extends LightningElement {
             const ctx = {
                 tseBaseUrl:    this.tseBaseUrl,
                 orgBaseUrl:    this.orgBaseUrl,
+                apiVersion:    this.apiVersion,
                 requestUrl:    this.requestUrl,
                 pageType:      this.pageType,
                 interaction:   this.interaction,
                 channel:       this.channel,
                 channelContext: this.channelContext,
-                requestTimeZone: this.requestTimeZone
+                requestTimeZone: this.requestTimeZone,
+                authMode:      this.authMode,
+                contextRows:   this.contextRows.map(r => ({ key: r.key, value: r.value }))
             };
             localStorage.setItem('p13n_sim_context', JSON.stringify(ctx));
         } catch (e) { /* storage unavailable */ }
@@ -201,13 +250,19 @@ export default class PersonalizationSimulator extends LightningElement {
             const ctx = JSON.parse(raw);
             if (ctx.tseBaseUrl)     this.tseBaseUrl     = ctx.tseBaseUrl;
             if (ctx.orgBaseUrl)     this.orgBaseUrl     = ctx.orgBaseUrl;
+            if (ctx.apiVersion)     this.apiVersion     = ctx.apiVersion;
             if (ctx.requestUrl)     this.requestUrl     = ctx.requestUrl;
             if (ctx.pageType)       this.pageType       = ctx.pageType;
             if (ctx.interaction)    this.interaction    = ctx.interaction;
             if (ctx.channel)        this.channel        = ctx.channel;
             if (ctx.channelContext) this.channelContext = ctx.channelContext;
             if (ctx.requestTimeZone) this.requestTimeZone = ctx.requestTimeZone;
+            if (ctx.authMode)       this.authMode       = ctx.authMode;
+            if (Array.isArray(ctx.contextRows)) this.contextRows = ctx.contextRows.map(r => makeRow(r.key, r.value));
         } catch (e) { /* corrupt storage — ignore */ }
+        try {
+            this.templateText = localStorage.getItem(TEMPLATE_KEY) || '';
+        } catch (e) { /* storage unavailable */ }
     }
 
     handleRequestUrlChange(event)     { this.requestUrl     = event.target.value; this.saveContext(); }
@@ -217,8 +272,90 @@ export default class PersonalizationSimulator extends LightningElement {
     handleChannelChange(event)        { this.channel        = event.target.value; this.saveContext(); }
     handleRequestTimeZoneChange(event){ this.requestTimeZone = event.target.value; this.saveContext(); }
 
+    handleAuthModeChange(event) { this.authMode = event.detail.value; this.saveContext(); }
+
+    // ── Decision context rows ────────────────────────────────────
+
+    handleAddContextRow() {
+        this.contextRows = [...this.contextRows, makeRow()];
+    }
+
+    handleContextRowChange(event) {
+        const id = event.target.dataset.id;
+        const field = event.target.dataset.field;
+        const value = event.target.value;
+        this.contextRows = this.contextRows.map(r => r.id === id ? { ...r, [field]: value } : r);
+        this.saveContext();
+    }
+
+    handleRemoveContextRow(event) {
+        const id = event.target.dataset.id;
+        this.contextRows = this.contextRows.filter(r => r.id !== id);
+        this.saveContext();
+    }
+
+    get hasContextRows() { return this.contextRows.length > 0; }
+
+    get ignoredContextKeys() {
+        const { ignored } = contextRowsToMap(this.contextRows);
+        return ignored.length ? `Ignored (set by the simulator): ${ignored.join(', ')}` : '';
+    }
+
+    // ── Template preview ─────────────────────────────────────────
+
+    handleTemplateChange(event) {
+        this.templateText = event.target.value;
+        try { localStorage.setItem(TEMPLATE_KEY, this.templateText); } catch (e) { /* storage unavailable */ }
+    }
+
+    // ── Compare ──────────────────────────────────────────────────
+
+    get resultEntries() { return this.entries.filter(e => e.hasResult); }
+    get canCompare()    { return this.resultEntries.length >= 2; }
+    get compareOptions() {
+        return this.resultEntries.map(e => ({ label: `${e.tabLabel} (${e.individualId})`, value: e.key }));
+    }
+
+    handleCompareAChange(event)  { this.compareA = event.detail.value; }
+    handleCompareBChange(event)  { this.compareB = event.detail.value; }
+    handleOnlyDiffsChange(event) { this.onlyDiffs = event.target.checked; }
+
+    get compareRows() {
+        const a = this.entries.find(e => e.key === this.compareA && e.hasResult);
+        const b = this.entries.find(e => e.key === this.compareB && e.hasResult);
+        if (!a || !b || a === b) return [];
+        return diffResponses(a.rawJson, b.rawJson)
+            .filter(r => !this.onlyDiffs || r.differs)
+            .map(r => ({ ...r, rowClass: r.differs ? 'compare-diff' : (r.volatile ? 'compare-volatile' : '') }));
+    }
+
+    get compareSummary() {
+        const a = this.entries.find(e => e.key === this.compareA && e.hasResult);
+        const b = this.entries.find(e => e.key === this.compareB && e.hasResult);
+        if (!a || !b) return 'Pick two visitors with results.';
+        if (a === b) return 'Pick two different visitors.';
+        const diffs = diffResponses(a.rawJson, b.rawJson).filter(r => r.differs).length;
+        const modes = a.mode !== b.mode ? ` Modes differ: ${a.mode} vs ${b.mode}.` : '';
+        return (diffs ? `${diffs} ${diffs === 1 ? 'value differs' : 'values differ'}.` : 'Same decision content (IDs that change per call are ignored).') + modes;
+    }
+
+    get compareLabelA() { return this.entries.find(e => e.key === this.compareA)?.tabLabel || 'A'; }
+    get compareLabelB() { return this.entries.find(e => e.key === this.compareB)?.tabLabel || 'B'; }
+    get hasCompareRows() { return this.compareRows.length > 0; }
+
+    get requiresAuthLabel() {
+        if (this.requiresAuth === true)  return 'Point requires authentication: yes';
+        if (this.requiresAuth === false) return 'Point requires authentication: no';
+        return 'Point authentication setting: unknown';
+    }
+
     handleTseUrlChange(event) {
         this.tseBaseUrl = event.target.value;
+        this.saveContext();
+    }
+
+    handleApiVersionChange(event) {
+        this.apiVersion = event.target.value;
         this.saveContext();
     }
 
@@ -234,9 +371,62 @@ export default class PersonalizationSimulator extends LightningElement {
             showTable:     view === 'table',
             showRequest:   view === 'request',
             showJson:      view === 'json',
-            showDataGraph: view === 'datagraph'
+            showDataGraph: view === 'datagraph',
+            showPreview:   view === 'preview'
         });
     }
+
+    async handleLogLookup(event) {
+        const key   = event.target.dataset.key;
+        const entry = this.entries.find(e => e.key === key);
+        if (!entry || !entry.requestId) {
+            this.updateEntry(key, { logMessage: 'This response has no requestId to look up.' });
+            return;
+        }
+        this.updateEntry(key, { logLoading: true, logMessage: '', logEntries: [] });
+        try {
+            const r = await lookupDecisionLog({ requestId: entry.requestId });
+            const logEntries = (r.entries || []).map((x, i) => ({
+                ...x,
+                id: String(i),
+                decision:     x.decisionName || x.decisionId || '',
+                personalizer: x.personalizerName || x.personalizerId || '',
+                experiment:   x.experimentName || x.experimentId || '',
+                cohort:       (x.cohortName || x.cohortId || '') + (x.cohortIsControl ? ' (control)' : '')
+            }));
+            this.updateEntry(key, { logLoading: false, logEntries, logMessage: r.found ? '' : (r.message || 'Nothing found.') });
+        } catch (e) {
+            this.updateEntry(key, { logLoading: false, logMessage: e.body?.message || e.message });
+        }
+    }
+
+    /** Preview document for one entry's response through the experience template. */
+    previewFor(entry) {
+        const none = { previewSrc: '', previewHtml: '', previewError: '' };
+        if (!this.templateText.trim() || !entry.rawJson) return none;
+        try {
+            const html = renderTemplate(this.templateText, templateData(JSON.parse(entry.rawJson)));
+            // LWC disallows srcdoc, so the document goes in as a data: URL; sandbox="" keeps
+            // scripts, forms and same-origin access off.
+            // ASSUMPTION: Lightning's CSP allows data: frames; the HTML source is shown as well.
+            return { ...none, previewSrc: previewDataUrl(previewDocument(html)), previewHtml: html };
+        } catch (e) {
+            return { ...none, previewError: 'Template could not be rendered: ' + e.message };
+        }
+    }
+
+    get entriesView() {
+        return this.entries.map(e => ({
+            ...e,
+            ...(e.showPreview ? this.previewFor(e) : { previewSrc: '', previewHtml: '', previewError: '' }),
+            hasAnswerInfo: e.answerInfo.length > 0,
+            hasLogEntries: e.logEntries.length > 0,
+            hasModeNotes:  e.modeNotes.length > 0,
+            modeBadgeClass: e.mode === 'Authenticated' ? 'slds-badge slds-badge_inverse' : 'slds-badge'
+        }));
+    }
+
+    get hasTemplate() { return this.templateText.trim().length > 0; }
 
     async handleDataGraphLookup(event) {
         const key   = event.target.dataset.key;
@@ -261,7 +451,8 @@ export default class PersonalizationSimulator extends LightningElement {
                 recordId:     this.recordId,
                 individualId: entry.individualId.trim(),
                 dataspace:    this.dataspace || 'default',
-                orgBaseUrl:   this.orgBaseUrl.trim()
+                orgBaseUrl:   this.orgBaseUrl.trim(),
+                apiVersion:   (this.apiVersion || '').trim()
             });
             this.updateEntry(key, {
                 dataGraphLoading: false,
@@ -277,21 +468,23 @@ export default class PersonalizationSimulator extends LightningElement {
         }
     }
 
-    buildRequestJson(individualId) {
-        const context = {
-            individualId: individualId,
-            dataspace:    this.dataspace || 'default'
-        };
-        if (this.requestUrl.trim())      context.requestUrl                = this.requestUrl.trim();
-        if (this.pageType.trim())        context.pageType                  = this.pageType.trim();
-        if (this.interaction.trim())     context.interaction               = this.interaction.trim();
-        if (this.channel.trim())         context.channel                   = this.channel.trim();
-        if (this.channelContext.trim())  context.channelContext             = this.channelContext.trim();
-        if (this.requestTimeZone.trim()) context.p13n_sys_requestTimeZone  = this.requestTimeZone.trim();
+    buildContextFor(individualId) {
+        return buildContext({
+            individualId,
+            dataspace:       this.dataspace,
+            requestUrl:      this.requestUrl,
+            pageType:        this.pageType,
+            interaction:     this.interaction,
+            channel:         this.channel,
+            channelContext:  this.channelContext,
+            requestTimeZone: this.requestTimeZone
+        }, this.contextRows);
+    }
 
+    buildRequestJson(individualId) {
         return JSON.stringify({
             personalizationPoints: [{ name: this.ppApiName }],
-            context
+            context: this.buildContextFor(individualId)
         }, null, 2);
     }
 
@@ -302,7 +495,9 @@ export default class PersonalizationSimulator extends LightningElement {
             this.globalError = 'Personalization Point API name not loaded yet.';
             return;
         }
-        if (!this.tseBaseUrl?.trim()) {
+        // The authenticated path can answer through the invocable action without a TSE URL.
+        const mayUseAction = this.authMode === 'authenticated' || (this.authMode === 'auto' && this.requiresAuth === true);
+        if (!this.tseBaseUrl?.trim() && !mayUseAction) {
             this.globalError = 'TSE Base URL is required.';
             return;
         }
@@ -328,20 +523,21 @@ export default class PersonalizationSimulator extends LightningElement {
         const rawRequestJson = this.buildRequestJson(entry.individualId.trim());
 
         try {
-            const result = await simulate({
-                personalizationPointName: this.ppApiName,
-                individualId:            entry.individualId.trim(),
-                tseBaseUrl:              this.tseBaseUrl.trim(),
-                dataspace:               this.dataspace || 'default',
-                requestUrl:              this.requestUrl.trim(),
-                pageType:                this.pageType.trim(),
-                interaction:             this.interaction.trim(),
-                channelContext:          this.channelContext.trim(),
-                channel:                 this.channel.trim(),
-                requestTimeZone:         this.requestTimeZone.trim()
+            const result = await runDecision({
+                requestJson: JSON.stringify({
+                    pointName:    this.ppApiName,
+                    tseBaseUrl:   (this.tseBaseUrl || '').trim(),
+                    authMode:     this.authMode,
+                    requiresAuth: this.requiresAuth,
+                    context:      this.buildContextFor(entry.individualId.trim())
+                })
             });
 
             const parsed = result.success ? this.parseResponseData(result.responseJson) : {};
+            let answerInfo = [];
+            if (result.success) {
+                try { answerInfo = extractDecisionInfo(JSON.parse(result.responseJson)); } catch (err) { answerInfo = []; }
+            }
 
             this.updateEntry(key, {
                 isLoading:        false,
@@ -355,6 +551,14 @@ export default class PersonalizationSimulator extends LightningElement {
                 showTable:    true,
                 showRequest:  false,
                 showJson:     false,
+                showDataGraph: false,
+                showPreview:  false,
+                mode:         result.mode || '',
+                modeDetail:   result.modeDetail || '',
+                modeNotes:    result.notes || [],
+                answerInfo,
+                logEntries:   [],
+                logMessage:   '',
                 ...parsed
             });
         } catch (e) {

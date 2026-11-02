@@ -15,6 +15,11 @@ A Lightning Web Component that lets Salesforce Personalization implementers fire
 - **Image fields** render as thumbnails; URL fields render as clickable links
 - **Attributes block** surfaces key-value response attributes (e.g. header text)
 - **JSON view** shows the full formatted raw API response
+- **Authenticated or public endpoint**: follows the point's "Requires authentication" setting (`IsAuthenticationRequired`), or you pick one. Every result says which mode answered and how it was chosen
+- **Decision context**: add any key/value pairs to the request context, for example a product ID for a recommender's dynamic context filter
+- **What answered**: shows decision, experiment and cohort fields found in the response, and **Look up in logs** reads the Personalization Log and A/B Experiment Log for the request to name the decision, personalizer, experiment and cohort
+- **Compare**: two visitors' responses side by side, with differing values highlighted
+- **Template preview** (optional): paste the point's Handlebars template and see the response rendered in a sandboxed frame
 
 | Table View | JSON View |
 |---|---|
@@ -134,6 +139,19 @@ Or in Salesforce: Setup → Users → select user → Permission Set Assignments
 5. Click **Save** → **Activate** → **Assign as Org Default** → **Save**
 6. Click **Back** to return to the record
 
+### Step 7b: (Optional) Authenticated decisioning
+
+Points with **Requires authentication** turned on only answer on the authenticated endpoint. The simulator tries two ways, in this order:
+
+1. **The standard invocable action `getPersonalizationDecisions`** (API 63.0 and later). It runs as the signed-in user, needs no token and no setup. If your org accepts the request this way, you are done.
+2. **A Data Cloud token** sent to `{TSE}/personalization/authenticated/decisions`. The Apex gets the token from the Data Cloud token exchange (`/services/a360/token`) through a Named Credential named `Personalization_DC_Token`. Set it up once:
+   1. Create a Connected App (or External Client App) with OAuth enabled, scopes **Manage user data via APIs (api)**, **Perform ANSI SQL queries on Data Cloud data (cdp_query_api)** or **Data Cloud API (cdp_api)**, and **Perform requests at any time (refresh_token)**. Callback URL: the one the Auth Provider shows in the next step.
+   2. Setup > Auth. Providers > New, type **Salesforce**, with the Connected App's consumer key and secret. Copy its Callback URL back into the Connected App.
+   3. Setup > Named Credentials > New Legacy: Label and Name `Personalization_DC_Token`, URL `https://YOUR-DOMAIN.my.salesforce.com`, Identity Type **Per User** (or Named Principal for a shared test user), Authentication Protocol **OAuth 2.0**, the Auth Provider from step 2, Scope `api cdp_api refresh_token`, tick **Allow Merge Fields in HTTP Body**, tick **Start Authentication Flow on Save**.
+   4. For Per User: each user authenticates once under their personal settings, **Authentication Settings for External Systems**.
+
+   The TSE Remote Site Setting from Step 2 already covers the authenticated endpoint. Callouts through a Named Credential need no Remote Site Setting.
+
 ### Step 8 — (Optional) Add CSP Trusted Sites for images
 
 If your Personalization Point returns image URLs from external domains (e.g. Heroku), add them as CSP Trusted Sites so thumbnails render correctly:
@@ -153,6 +171,23 @@ If your Personalization Point returns image URLs from external domains (e.g. Her
 | `TSE_Base_URL__c` | TSE endpoint — **no trailing slash** | `https://m-xxxx.c360a.salesforce.com` |
 | `Dataspace__c` | Personalization dataspace name | `default` |
 | `Is_Active__c` | Mark the active config record | `true` |
+| `Org_Base_URL__c` | This org's My Domain URL, for the data graph lookup | `https://myorg.my.salesforce.com` |
+| `API_Version__c` | Salesforce REST API version for calls to this org's API (data graph lookup). Blank means 66.0 | `66.0` |
+
+### API version
+
+There are two API versions, and both can be changed:
+
+- **At run time:** `API_Version__c` in the Personalization Config custom metadata sets the default for everyone. Each user can override it in the component's **API version** field (kept in the browser, like the TSE URL). Values like `66`, `v66.0` and `66.0` are accepted; anything else is refused.
+- **At deploy time:** the metadata files declare `<apiVersion>66.0</apiVersion>` and `sfdx-project.json` has `"sourceApiVersion": "66.0"`. To deploy at another version, change them in one go before deploying, for example:
+
+  ```bash
+  NEW=65.0
+  sed -i "s#<apiVersion>[0-9.]*</apiVersion>#<apiVersion>$NEW</apiVersion>#" force-app/main/default/classes/*.cls-meta.xml force-app/main/default/lwc/*/*.js-meta.xml
+  sed -i "s#\"sourceApiVersion\": \"[0-9.]*\"#\"sourceApiVersion\": \"$NEW\"#" sfdx-project.json
+  ```
+
+  Authenticated decisioning uses ConnectApi Personalization types, so keep the classes at a version that has them (66.0 was checked).
 
 ---
 
@@ -163,7 +198,9 @@ force-app/
 └── main/default/
     ├── classes/
     │   ├── PersonalizationSimulatorController.cls       — Apex callout + config
-    │   └── PersonalizationSimulatorControllerTest.cls   — Test class
+    │   ├── PersonalizationSimulatorControllerTest.cls   — Test class
+    │   ├── PersonalizationDecisionService.cls(+Test)    : auth modes, token exchange, invocable action
+    │   └── PersonalizationLogLookup.cls(+Test)          : decision and cohort from the log DMOs
     ├── customMetadata/
     │   └── Personalization_Config__mdt.Default.md-meta.xml
     ├── objects/
@@ -201,6 +238,12 @@ docs/
    - **Attributes** block = top-level response attributes (e.g. header text)
    - **Table View** = one row per recommended item, columns auto-detected
    - **JSON View** = full raw API response
+   - The badge next to the request ID says **Authenticated** or **Unauthenticated**; the line under it says why (point setting, your choice, or a retry after the public endpoint answered 401/403) and which path answered
+6. **Decisioning endpoint**: Auto follows the point's setting; pick Authenticated or Unauthenticated to force one
+7. **Decision Context**: Add key, then a key and a value. Values that look like JSON (`{...}` or `[...]`) are sent as JSON. `individualId` and `dataspace` are set by the simulator and ignored here
+8. **What answered**: after a run, click **Look up in logs**. Logs arrive several minutes after the request, so try again if it says no rows yet
+9. **Compare**: with two or more results, pick Visitor A and Visitor B. Only differences is on by default; request and personalization IDs that change on every call are ignored
+10. **Experience template**: paste a template, run, then open the **Preview** view of a result. Supported: `{{var}}` (escaped), `{{{var}}}` (raw), `#if`, `#unless`, `#each` (with `@index`, `@key`, `@first`, `@last`), `#with`, `else`, `../` and `this`. The data is the first personalization of the response (`data`, `attributes`) plus `personalizations` and `requestId`. The frame runs no scripts
 
 ---
 
@@ -211,7 +254,10 @@ docs/
 | `TSE Base URL not configured` | Custom Metadata record has placeholder URL | Complete Step 5 |
 | `Failed to load Personalization Point API name` | `PersonalizationPoint` object or `DeveloperName` field not found | Verify object API name in Setup → Object Manager |
 | HTTP 400 `individualId is required` | TSE URL misconfigured or wrong dataspace | Double-check TSE URL and dataspace in Custom Metadata |
-| HTTP 401 Unauthorized | TSE URL points to wrong org | Confirm TSE URL matches the org you're logged into |
+| HTTP 401 Unauthorized | TSE URL points to wrong org, or the point requires authentication | Confirm the TSE URL; in Auto mode the simulator retries authenticated after a 401/403 |
+| `Could not get a Data Cloud token (Named Credential Personalization_DC_Token)` | Authenticated path without the Named Credential | Complete Step 7b, or check the invocable action note in the result |
+| `No log rows for this request yet` | Logs arrive with a delay | Wait a few minutes and click Look up in logs again |
+| Preview frame stays blank | Your org's CSP blocks `data:` frames | Open **Rendered HTML** under the frame |
 | Remote Site blocked callout | Remote Site Setting not updated | Complete Step 2 and redeploy |
 | Images show broken icon | External domain blocked by CSP | Complete Step 8 |
 | Component not visible in App Builder | Wrong target object or not deployed | Verify `js-meta.xml` targets `PersonalizationPoint` and redeploy |
@@ -221,9 +267,16 @@ docs/
 
 ## Notes
 
-- The Decisioning API requires **no bearer token** — it is identified by the TSE URL and `individualId` only
+- The public decisioning endpoint (`/personalization/decisions`) needs no bearer token: it is identified by the TSE URL and `individualId`. Points that require authentication need the authenticated endpoint with a Data Cloud token, or the invocable action (Step 7b)
 - Most orgs use dataspace `default` — update the Custom Metadata record if yours differs
 - The `PersonalizationPoint` object and `DeveloperName` field depend on the managed package version in your org — verify in Setup → Object Manager if the API name fails to load
+
+---
+
+## Tests
+
+- LWC: `npm install`, then `npm test` (Jest through `@salesforce/sfdx-lwc-jest`).
+- Apex: `sf apex run test --target-org myorg --class-names PersonalizationSimulatorControllerTest,PersonalizationDecisionServiceTest,PersonalizationLogLookupTest --code-coverage --result-format human`.
 
 ---
 

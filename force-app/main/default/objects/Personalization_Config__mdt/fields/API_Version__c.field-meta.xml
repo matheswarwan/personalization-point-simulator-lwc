@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>API_Version__c</fullName>
+    <description>Salesforce REST API version for the org's own API calls (data graph lookup), e.g. 66.0. Blank means 66.0. Users can override it in the component.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>API Version</label>
+    <length>10</length>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

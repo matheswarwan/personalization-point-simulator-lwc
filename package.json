@@ -1,0 +1,13 @@
+{
+  "name": "personalization-point-simulator-lwc",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Personalization Point Simulator LWC: Jest tests",
+  "scripts": {
+    "test": "sfdx-lwc-jest -- --runInBand",
+    "test:coverage": "sfdx-lwc-jest --coverage -- --runInBand"
+  },
+  "devDependencies": {
+    "@salesforce/sfdx-lwc-jest": "^7.0.1"
+  }
+}

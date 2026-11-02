@@ -26,6 +26,10 @@ A Lightning Web Component on **Personalization Point record pages** in Salesforc
 
 ---
 
+## 2026-11-01: branch `feat/simulator-upgrades` (not deployed)
+
+Added: authenticated decisioning (point setting `IsAuthenticationRequired`, invocable action first, then Data Cloud token via Named Credential `Personalization_DC_Token`), decision context rows, What answered + Look up in logs (Personalization Log and A/B Experiment Log DMOs), Compare two visitors, template preview. LWC Jest set up (`npm test`). Apex tests written but not run: no org was available to deploy to. Assumptions to verify are listed in the PR description. Details in `design.md`.
+
 ## Current Feature State
 
 ### ✅ Working

@@ -101,3 +101,11 @@
     border-radius: 12px;
     font-weight: 600;
 }
+
+/* Compare */
+.compare-diff td { background: #fef1ee; }
+.compare-volatile td { color: #706e6b; }
+.compare-path { font-family: monospace; font-size: 0.75rem; }
+
+/* Template preview */
+.template-preview { width: 100%; min-height: 320px; border: 1px solid #dddbda; border-radius: 0.25rem; background: #fff; }
